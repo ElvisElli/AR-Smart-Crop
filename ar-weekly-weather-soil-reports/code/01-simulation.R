@@ -1,12 +1,17 @@
 # ═══════════════════════════════════════════════════════════════════════════
-# Phase 1: APSIM Grid Simulations
+# Phase 1: APSIM Grid Simulations (Multi-Mode)
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # Runs APSIM baseline scenario across ~4,650 grid cells in parallel.
+# Supports three modes:
+#   - WEEKLY: Current week only (fast, for automation)
+#   - HISTORICAL: 1985-2025 by year (slow, one-time baseline generation)
+#   - FORECAST: Next week with forecast data (optional research stations)
+#
 # Resumable via per-chunk checkpoints. Auto-detects Windows/Linux/cloud.
 #
 # Adapted from: ElvisElli/soybean-ar-climate-change code/01-simulation.R
-# Simplified: baseline only, weekly (not 40-year), focus on soil water
+# Enhanced: Multi-mode support, benchmarking, forecast capability
 # ═══════════════════════════════════════════════════════════════════════════
 
 rm(list = ls())
@@ -43,7 +48,21 @@ suppressPackageStartupMessages({
 
 ## ── Helper: time stamp ──────────────────────────────────────────────────
 .ts <- function() format(Sys.time(), "%H:%M:%S")
-cat(sprintf("[%s] Phase 1: APSIM Grid Simulation started\n\n", .ts()))
+cat(sprintf("[%s] Phase 1: APSIM Grid Simulation started\n", .ts()))
+cat(sprintf("[MODE] %s\n\n", toupper(SIMULATION_MODE)))
+
+## ── Mode-specific setup ─────────────────────────────────────────────────
+# For historical mode: loop through years, generate yearly files
+if (SIMULATION_MODE == "historical") {
+  YEARS_TO_RUN <- seq(as.numeric(format(as.Date(ACTIVE_DATE_START), "%Y")),
+                      as.numeric(format(as.Date(ACTIVE_DATE_END), "%Y")))
+  message(sprintf("[HISTORICAL] Running %d years: %d to %d",
+                 length(YEARS_TO_RUN), YEARS_TO_RUN[1], YEARS_TO_RUN[length(YEARS_TO_RUN)]))
+  message(sprintf("[HISTORICAL] Yearly results saved to: %s\n", PATH_PROCESSED))
+} else {
+  message(sprintf("[%s] Date range: %s to %s\n",
+                 toupper(SIMULATION_MODE), ACTIVE_DATE_START, ACTIVE_DATE_END))
+}
 
 ## ── Environment detection ───────────────────────────────────────────────
 detect_env <- function() {
@@ -254,7 +273,7 @@ tryCatch({
   registerDoParallel(cl)
 
   clusterExport(cl,
-    c("ENV", "KL_VEC", "XF_VEC", "DATE_START", "DATE_END",
+    c("ENV", "KL_VEC", "XF_VEC", "ACTIVE_DATE_START", "ACTIVE_DATE_END",
       "CULTIVAR", "SOW_DATE", "ROW_SPACING", "CO2_PPM",
       "prepare_soil", "extract_results",
       "apsim_dir", "weather_path", "soil_path", "template_path"),
@@ -275,129 +294,272 @@ tryCatch({
   chunks <- split(1:nrow(sim.grid1),
                   rep(1:n_chunks, each = CHUNK_SIZE, length.out = nrow(sim.grid1)))
 
-  total_results <- list()
-  log_data <- data.frame()
+  # Historical mode: loop through years
+  if (SIMULATION_MODE == "historical") {
+    for (year_idx in seq_along(YEARS_TO_RUN)) {
+      year <- YEARS_TO_RUN[year_idx]
+      cat(sprintf("\n[%s] ═══ YEAR %d (%d of %d) ═══\n",
+                  .ts(), year, year_idx, length(YEARS_TO_RUN)))
 
-  for (chunk_idx in seq_along(chunks)) {
-    chunk_rows <- chunks[[chunk_idx]]
-    chunk_cells <- sim.grid1[chunk_rows, ]
+      # Set date range for this year
+      year_start <- sprintf("%d-01-01", year)
+      year_end   <- sprintf("%d-12-31", year)
 
-    # Check for checkpoint
-    checkpoint_file <- file.path(checkpoint_dir,
-                                 sprintf("chunk_%03d.rds", chunk_idx))
+      # Export year-specific dates to cluster
+      clusterExport(cl, c("year_start", "year_end"),
+                   envir = environment())
 
-    if (file.exists(checkpoint_file)) {
-      cat(sprintf("[%s] Chunk %d/%d: SKIPPING (checkpoint exists)\n",
-                  .ts(), chunk_idx, n_chunks))
-      total_results[[chunk_idx]] <- readRDS(checkpoint_file)
-      next
+      # Update ACTIVE_DATE_START/END for this year
+      ACTIVE_DATE_START <- year_start
+      ACTIVE_DATE_END   <- year_end
+      clusterExport(cl, c("ACTIVE_DATE_START", "ACTIVE_DATE_END"),
+                   envir = environment())
+
+      total_results <- list()
+
+      for (chunk_idx in seq_along(chunks)) {
+        chunk_rows <- chunks[[chunk_idx]]
+        chunk_cells <- sim.grid1[chunk_rows, ]
+
+        # Check for checkpoint (year-specific)
+        checkpoint_file <- file.path(checkpoint_dir,
+                                     sprintf("chunk_%04d_%03d.rds", year, chunk_idx))
+
+        if (file.exists(checkpoint_file)) {
+          cat(sprintf("[%s] Chunk %d/%d: SKIPPING (checkpoint exists)\n",
+                      .ts(), chunk_idx, n_chunks))
+          total_results[[chunk_idx]] <- readRDS(checkpoint_file)
+          next
+        }
+
+        cat(sprintf("[%s] Chunk %d/%d: %d cells...\n",
+                    .ts(), chunk_idx, n_chunks, nrow(chunk_cells)))
+
+        # Parallel processing within chunk
+        chunk_results <- foreach(
+          i = seq_len(nrow(chunk_cells)),
+          .combine = "rbind",
+          .packages = c("apsimx", "dplyr")
+        ) %dopar% {
+
+          cell_row <- chunk_cells[i, ]
+          cellid   <- cell_row$cellid
+
+          # Paths
+          weather_file <- file.path(weather_path, paste0(cellid, ".met"))
+          soil_file    <- file.path(soil_path,    paste0(cellid, ".rds"))
+
+          if (!file.exists(weather_file)) return(NULL)
+          if (!file.exists(soil_file))    return(NULL)
+
+          tryCatch({
+            # Copy template to temp file
+            temp_file <- file.path(apsim_dir, paste0("sim-", cellid, "-", Sys.getpid(), ".apsimx"))
+            file.copy(template_path, temp_file, overwrite = TRUE)
+
+            # Set Clock dates
+            edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                        wrt.dir = dirname(temp_file),
+                        node = "Clock", parm = "Start", value = ACTIVE_DATE_START,
+                        overwrite = TRUE, verbose = FALSE)
+
+            edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                        wrt.dir = dirname(temp_file),
+                        node = "Clock", parm = "End", value = ACTIVE_DATE_END,
+                        overwrite = TRUE, verbose = FALSE)
+
+            # Set weather file
+            edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                        wrt.dir = dirname(temp_file),
+                        node = "Weather", value = weather_file,
+                        overwrite = TRUE, verbose = FALSE)
+
+            # Set soil profile
+            sp <- prepare_soil(soil_file, KL_VEC, XF_VEC)
+            if (is.null(sp)) return(NULL)
+
+            edit_apsimx_replace_soil_profile(
+              file = basename(temp_file), src.dir = dirname(temp_file),
+              wrt.dir = dirname(temp_file),
+              soil.profile = sp$soils, verbose = FALSE, overwrite = TRUE)
+
+            edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                        wrt.dir = dirname(temp_file),
+                        node = "Soil", soil.child = "Physical",
+                        parm = "KL", value = sp$KL,
+                        verbose = FALSE, overwrite = TRUE)
+
+            edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                        wrt.dir = dirname(temp_file),
+                        node = "Soil", soil.child = "Physical",
+                        parm = "XF", value = sp$XF,
+                        verbose = FALSE, overwrite = TRUE)
+
+            # Run APSIM
+            sim <- apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                          cleanup = TRUE)
+
+            # Extract results
+            result <- extract_results(sim, cell_row)
+
+            # Clean up temp file
+            tryCatch(file.remove(temp_file), error = function(e) NULL)
+
+            return(result)
+
+          }, error = function(e) {
+            # Log error but continue
+            message(sprintf("[ERROR] Cell %d: %s", cellid, e$message))
+            return(NULL)
+          })
+        }
+
+        # Save checkpoint
+        saveRDS(chunk_results, checkpoint_file)
+        total_results[[chunk_idx]] <- chunk_results
+
+        n_ok <- sum(!sapply(chunk_results, is.null))
+        cat(sprintf("[%s] Chunk %d complete: %d/%d cells successful\n",
+                    .ts(), chunk_idx, n_ok, nrow(chunk_cells)))
+      }
+
+      # Combine year results and save yearly file
+      year_results <- do.call(rbind, total_results)
+      year_results <- year_results[!is.na(year_results$cellid), ]
+
+      year_result_file <- file.path(processed_dir,
+                                    sprintf("simulation-results-%d.rds", year))
+      saveRDS(year_results, year_result_file)
+
+      cat(sprintf("[%s] Year %d saved: %d records to %s\n",
+                  .ts(), year, nrow(year_results), basename(year_result_file)))
     }
 
-    cat(sprintf("[%s] Chunk %d/%d: %d cells...\n",
-                .ts(), chunk_idx, n_chunks, nrow(chunk_cells)))
+  } else {
+    # Weekly or Forecast mode: single date range
+    total_results <- list()
 
-    # Parallel processing within chunk
-    chunk_results <- foreach(
-      i = seq_len(nrow(chunk_cells)),
-      .combine = "rbind",
-      .packages = c("apsimx", "dplyr")
-    ) %dopar% {
+    for (chunk_idx in seq_along(chunks)) {
+      chunk_rows <- chunks[[chunk_idx]]
+      chunk_cells <- sim.grid1[chunk_rows, ]
 
-      cell_row <- chunk_cells[i, ]
-      cellid   <- cell_row$cellid
+      # Check for checkpoint
+      checkpoint_file <- file.path(checkpoint_dir,
+                                   sprintf("chunk_%03d.rds", chunk_idx))
 
-      # Paths
-      weather_file <- file.path(weather_path, paste0(cellid, ".met"))
-      soil_file    <- file.path(soil_path,    paste0(cellid, ".rds"))
+      if (file.exists(checkpoint_file)) {
+        cat(sprintf("[%s] Chunk %d/%d: SKIPPING (checkpoint exists)\n",
+                    .ts(), chunk_idx, n_chunks))
+        total_results[[chunk_idx]] <- readRDS(checkpoint_file)
+        next
+      }
 
-      if (!file.exists(weather_file)) return(NULL)
-      if (!file.exists(soil_file))    return(NULL)
+      cat(sprintf("[%s] Chunk %d/%d: %d cells...\n",
+                  .ts(), chunk_idx, n_chunks, nrow(chunk_cells)))
 
-      tryCatch({
-        # Copy template to temp file
-        temp_file <- file.path(apsim_dir, paste0("sim-", cellid, "-", Sys.getpid(), ".apsimx"))
-        file.copy(template_path, temp_file, overwrite = TRUE)
+      # Parallel processing within chunk
+      chunk_results <- foreach(
+        i = seq_len(nrow(chunk_cells)),
+        .combine = "rbind",
+        .packages = c("apsimx", "dplyr")
+      ) %dopar% {
 
-        # Set Clock dates
-        edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
-                    wrt.dir = dirname(temp_file),
-                    node = "Clock", parm = "Start", value = DATE_START,
-                    overwrite = TRUE, verbose = FALSE)
+        cell_row <- chunk_cells[i, ]
+        cellid   <- cell_row$cellid
 
-        edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
-                    wrt.dir = dirname(temp_file),
-                    node = "Clock", parm = "End", value = DATE_END,
-                    overwrite = TRUE, verbose = FALSE)
+        # Paths
+        weather_file <- file.path(weather_path, paste0(cellid, ".met"))
+        soil_file    <- file.path(soil_path,    paste0(cellid, ".rds"))
 
-        # Set weather file
-        edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
-                    wrt.dir = dirname(temp_file),
-                    node = "Weather", value = weather_file,
-                    overwrite = TRUE, verbose = FALSE)
+        if (!file.exists(weather_file)) return(NULL)
+        if (!file.exists(soil_file))    return(NULL)
 
-        # Set soil profile
-        sp <- prepare_soil(soil_file, KL_VEC, XF_VEC)
-        if (is.null(sp)) return(NULL)
+        tryCatch({
+          # Copy template to temp file
+          temp_file <- file.path(apsim_dir, paste0("sim-", cellid, "-", Sys.getpid(), ".apsimx"))
+          file.copy(template_path, temp_file, overwrite = TRUE)
 
-        edit_apsimx_replace_soil_profile(
-          file = basename(temp_file), src.dir = dirname(temp_file),
-          wrt.dir = dirname(temp_file),
-          soil.profile = sp$soils, verbose = FALSE, overwrite = TRUE)
+          # Set Clock dates
+          edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                      wrt.dir = dirname(temp_file),
+                      node = "Clock", parm = "Start", value = ACTIVE_DATE_START,
+                      overwrite = TRUE, verbose = FALSE)
 
-        edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
-                    wrt.dir = dirname(temp_file),
-                    node = "Soil", soil.child = "Physical",
-                    parm = "KL", value = sp$KL,
-                    verbose = FALSE, overwrite = TRUE)
+          edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                      wrt.dir = dirname(temp_file),
+                      node = "Clock", parm = "End", value = ACTIVE_DATE_END,
+                      overwrite = TRUE, verbose = FALSE)
 
-        edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
-                    wrt.dir = dirname(temp_file),
-                    node = "Soil", soil.child = "Physical",
-                    parm = "XF", value = sp$XF,
-                    verbose = FALSE, overwrite = TRUE)
+          # Set weather file
+          edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                      wrt.dir = dirname(temp_file),
+                      node = "Weather", value = weather_file,
+                      overwrite = TRUE, verbose = FALSE)
 
-        # Run APSIM
-        sim <- apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
-                      cleanup = TRUE)
+          # Set soil profile
+          sp <- prepare_soil(soil_file, KL_VEC, XF_VEC)
+          if (is.null(sp)) return(NULL)
 
-        # Extract results
-        result <- extract_results(sim, cell_row)
+          edit_apsimx_replace_soil_profile(
+            file = basename(temp_file), src.dir = dirname(temp_file),
+            wrt.dir = dirname(temp_file),
+            soil.profile = sp$soils, verbose = FALSE, overwrite = TRUE)
 
-        # Clean up temp file
-        tryCatch(file.remove(temp_file), error = function(e) NULL)
+          edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                      wrt.dir = dirname(temp_file),
+                      node = "Soil", soil.child = "Physical",
+                      parm = "KL", value = sp$KL,
+                      verbose = FALSE, overwrite = TRUE)
 
-        return(result)
+          edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                      wrt.dir = dirname(temp_file),
+                      node = "Soil", soil.child = "Physical",
+                      parm = "XF", value = sp$XF,
+                      verbose = FALSE, overwrite = TRUE)
 
-      }, error = function(e) {
-        # Log error but continue
-        message(sprintf("[ERROR] Cell %d: %s", cellid, e$message))
-        return(NULL)
-      })
+          # Run APSIM
+          sim <- apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
+                        cleanup = TRUE)
+
+          # Extract results
+          result <- extract_results(sim, cell_row)
+
+          # Clean up temp file
+          tryCatch(file.remove(temp_file), error = function(e) NULL)
+
+          return(result)
+
+        }, error = function(e) {
+          # Log error but continue
+          message(sprintf("[ERROR] Cell %d: %s", cellid, e$message))
+          return(NULL)
+        })
+      }
+
+      # Save checkpoint
+      saveRDS(chunk_results, checkpoint_file)
+      total_results[[chunk_idx]] <- chunk_results
+
+      n_ok <- sum(!sapply(chunk_results, is.null))
+      cat(sprintf("[%s] Chunk %d complete: %d/%d cells successful\n",
+                  .ts(), chunk_idx, n_ok, nrow(chunk_cells)))
     }
 
-    # Save checkpoint
-    saveRDS(chunk_results, checkpoint_file)
-    total_results[[chunk_idx]] <- chunk_results
+    # Combine all results
+    all_results <- do.call(rbind, total_results)
+    all_results <- all_results[!is.na(all_results$cellid), ]
 
-    n_ok <- sum(!sapply(chunk_results, is.null))
-    cat(sprintf("[%s] Chunk %d complete: %d/%d cells successful\n",
-                .ts(), chunk_idx, n_ok, nrow(chunk_cells)))
+    # Save results
+    result_file <- file.path(processed_dir, "simulation-results.rds")
+    saveRDS(all_results, result_file)
+
+    cat(sprintf("\n[%s] Simulations COMPLETE\n", .ts()))
+    cat(sprintf("  Total records: %d\n", nrow(all_results)))
+    cat(sprintf("  Date range: %s to %s\n",
+                min(all_results$Date, na.rm=TRUE), max(all_results$Date, na.rm=TRUE)))
+    cat(sprintf("  Saved to: %s\n", result_file))
+    cat(sprintf("  Checkpoints: %s/\n\n", checkpoint_dir))
   }
-
-  # Combine all results
-  all_results <- do.call(rbind, total_results)
-  all_results <- all_results[!is.na(all_results$cellid), ]
-
-  # Save results
-  result_file <- file.path(processed_dir, "simulation-results.rds")
-  saveRDS(all_results, result_file)
-
-  cat(sprintf("\n[%s] Simulations COMPLETE\n", .ts()))
-  cat(sprintf("  Total records: %d\n", nrow(all_results)))
-  cat(sprintf("  Date range: %s to %s\n",
-              min(all_results$Date, na.rm=TRUE), max(all_results$Date, na.rm=TRUE)))
-  cat(sprintf("  Saved to: %s\n", result_file))
-  cat(sprintf("  Checkpoints: %s/\n\n", checkpoint_dir))
 
 }, error = function(e) {
   cat(sprintf("[%s] ERROR: %s\n", .ts(), e$message))
