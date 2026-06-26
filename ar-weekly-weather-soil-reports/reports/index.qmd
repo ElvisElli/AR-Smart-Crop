@@ -1,0 +1,123 @@
+---
+title: "Reports"
+subtitle: "Weekly Weather & Soil Water Analysis"
+---
+
+## Current Week's Report
+
+The most recent comprehensive report on Arkansas weather conditions and soil water status is updated every Monday morning.
+
+[**📄 View This Week's Report**](current-report.qmd)
+
+---
+
+## Report Contents
+
+Each weekly report includes:
+
+### 1. **Statewide Executive Summary**
+- Temperature trends (high, low, mean)
+- Precipitation totals and anomalies
+- Overall soil water status map
+- Key events and alerts
+
+### 2. **Historical Benchmarking**
+- This week's percentile ranking vs. 20+ year normal
+- How unusual are this week's conditions?
+- Record highs/lows and wettest/driest periods
+- Seasonal context and trends
+
+### 3. **Station Deep-Dives** (10+ research stations)
+For each major station:
+- Current conditions (temperature, precipitation, soil water)
+- 7-day historical comparison
+- 7-10 day forecast
+- Growing Degree Days (GDD) accumulation
+- Crop stress alerts
+
+### 4. **Forecast Outlook**
+- 7-10 day temperature and precipitation trends
+- Frost risk dates and probabilities
+- Projected water stress periods
+- Actionable crop management alerts
+
+### 5. **Data & Visualizations**
+- Interactive maps showing statewide conditions
+- Time series plots for each station
+- Soil water status visualization
+- Downloadable CSV datasets
+
+---
+
+## Archive
+
+Browse [past reports](archive.qmd) to see seasonal patterns and year-to-year comparisons.
+
+---
+
+## Weekly Topics
+
+### Spring (March–May)
+- Frost risk monitoring
+- Soil warming trends
+- Planting date optimization
+- Early-season water availability
+
+### Summer (June–August)
+- Heat stress monitoring
+- Irrigation demand forecasting
+- Soil moisture depletion tracking
+- Growth stage development
+
+### Fall (September–November)
+- Maturity acceleration due to cool nights
+- Harvest weather outlook
+- Grain fill conditions
+- End-of-season water status
+
+### Winter (December–February)
+- Season-to-date cumulative analysis
+- Winter precipitation impacts
+- Setup for spring planting
+
+---
+
+## How to Read the Reports
+
+### Understanding Percentile Rankings
+- **Below 25th percentile:** Unusually dry/cool (rare for this time of year)
+- **25th–75th percentile:** Near-normal conditions (most years fall here)
+- **Above 75th percentile:** Unusually wet/warm (rare for this time of year)
+
+### Soil Water Interpretation
+- **>75% available water:** Good conditions; low stress risk
+- **50–75%:** Adequate; monitor if hot/dry forecast
+- **25–50%:** Caution; stress possible if hot/dry continues
+- **<25%:** Critical; irrigation recommended if available
+
+### Growing Degree Days (GDD)
+Accumulated heat from April 1. Linked to crop growth stages:
+- **100 GDD:** Emergence (most crops)
+- **400–600 GDD:** V4–V6 leaf growth
+- **900–1200 GDD:** Flowering (varies by crop/variety)
+- **1500–2000 GDD:** Physiological maturity
+
+---
+
+## Subscribing to Reports
+
+### Email Delivery
+Sign up for email delivery of new reports (coming soon):
+[Subscribe](mailto:eelli@uark.edu?subject=Subscribe%20to%20Weekly%20Reports)
+
+### RSS Feed
+Subscribe to new report notifications:
+[RSS Feed](../feed.xml)
+
+---
+
+## Feedback
+
+Have questions about the reports or suggestions for improvements?
+
+[📧 Send Feedback](mailto:eelli@uark.edu?subject=Weekly%20Weather%20Report%20Feedback)

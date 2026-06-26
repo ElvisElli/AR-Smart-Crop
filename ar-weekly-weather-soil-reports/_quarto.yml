@@ -1,0 +1,65 @@
+project:
+  type: website
+  title: "AR Weekly Weather & Soil Water Reports"
+  output-dir: _site
+
+website:
+  title: "Arkansas Weekly Weather & Soil Water Reports"
+  site-url: "https://your-lab.uark.edu/weather-reports"
+  description: "Automated weekly intelligence on Arkansas weather conditions and soil water status for crop development monitoring"
+
+  navbar:
+    title: "AR Weather Reports"
+    logo: "assets/logo.png"
+    left:
+      - text: "Home"
+        href: index.qmd
+      - text: "Current Report"
+        href: reports/current-report.qmd
+      - text: "Report Archive"
+        href: reports/archive.qmd
+      - text: "Data Downloads"
+        href: data-downloads.qmd
+      - text: "Lab Updates"
+        href: lab-updates.qmd
+    right:
+      - icon: github
+        href: "https://github.com/your-lab/ar-weekly-weather-soil-reports"
+      - icon: twitter
+        href: "https://twitter.com/your-lab"
+
+  sidebar:
+    - id: reports
+      title: "Reports"
+      style: "docked"
+      collapse-level: 1
+      contents:
+        - reports/index.qmd
+        - reports/current-report.qmd
+        - reports/archive.qmd
+
+  page-footer:
+    left: |
+      © 2025 University of Arkansas Division of Agriculture
+    center: "Developed by [Lab Name]"
+    right: |
+      [Contact](mailto:eelli@uark.edu)
+
+format:
+  html:
+    theme: cosmo
+    css: assets/custom.css
+    toc: true
+    toc-depth: 2
+    number-sections: false
+    highlight-style: github
+    code-fold: true
+    code-summary: "Show code"
+    smooth-scroll: true
+
+execute:
+  cache: true
+  freeze: true
+
+quartodoc:
+  enable: false

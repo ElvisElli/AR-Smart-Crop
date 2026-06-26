@@ -1,0 +1,56 @@
+# R Files
+.Rhistory
+.Rdata
+.Ruserdata
+*.Rproj
+*.Rproj.user
+
+# Compiled Documents
+*.html
+*.pdf
+
+# Data Files (Large, not tracked)
+data/raw/historical-weather/**
+data/raw/soil-properties/**
+data/cache/**
+data/processed/**
+data/outputs/reports/*.html
+data/outputs/reports/*.pdf
+data/outputs/datasets/*.csv
+
+# Logs
+data/logs/**
+*.log
+
+# Temporary Files
+_site/
+_quarto/
+tmp/
+temp/
+scratch/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.Rproj.user/
+.idea/
+
+# System
+$RECYCLE.BIN/
+
+# Environment
+.Renviron
+.env
+.env.local
+secrets/
+
+# Python (if used)
+__pycache__/
+*.py[cod]
+*$py.class

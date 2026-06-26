@@ -1,0 +1,60 @@
+---
+title: "Report Archive"
+subtitle: "Browse Past Reports"
+---
+
+## Reports by Year
+
+### 2025
+
+| Week | Date | Report | Data |
+|------|------|--------|------|
+| W26 | June 23 | [📄 View](current-report.qmd) | [📥 Weather](../data-downloads.qmd) \| [💧 Soil](../data-downloads.qmd) \| [🌦️ Forecast](../data-downloads.qmd) |
+
+*Archive will be populated as reports are generated each Monday*
+
+---
+
+## Search Reports
+
+Use your browser's search (Ctrl+F / Cmd+F) to find:
+- **Station names** (Fayetteville, Marianna, etc.)
+- **Metrics** (GDD, soil water, temperature)
+- **Weather events** (frost, drought, flooding)
+
+---
+
+## Seasonal Trends
+
+### Spring (Mar–May)
+- Frost risk monitoring
+- Soil warming
+- Planting date readiness
+
+### Summer (Jun–Aug)
+- Heat stress
+- Water availability
+- Crop development stages
+
+### Fall (Sep–Nov)
+- Maturity timing
+- Harvest conditions
+- Season-end analysis
+
+### Winter (Dec–Feb)
+- Precipitation patterns
+- Season preview
+
+---
+
+## Download Historical Data
+
+Access 30 years of daily weather data for all stations:
+
+[📥 Download 1995–2024 Climate Archive](../data-downloads.qmd#long-term-historical-data)
+
+---
+
+## Report Feedback
+
+Was this report useful? [Send feedback](mailto:eelli@uark.edu?subject=Report%20Feedback)

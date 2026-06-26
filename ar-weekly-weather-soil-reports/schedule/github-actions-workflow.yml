@@ -1,0 +1,99 @@
+name: Weekly Weather Report Generation
+
+on:
+  schedule:
+    # Run every Monday at 7:00 AM UTC (2:00 AM CDT)
+    - cron: '0 7 * * 1'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up R
+        uses: r-lib/setup-r@v2
+        with:
+          r-version: '4.3'
+
+      - name: Cache R packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/share/renv
+          key: ${{ runner.os }}-renv-${{ hashFiles('**/renv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-renv-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            gdal-bin \
+            proj-bin
+
+      - name: Install R dependencies
+        run: |
+          Rscript -e "
+            if (!require('renv')) install.packages('renv')
+            renv::restore()
+          "
+
+      - name: Install Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Run data pipeline
+        run: |
+          Rscript code/99-master.R
+        env:
+          API_TIMEOUT_SECONDS: '60'
+          VERBOSE: 'TRUE'
+
+      - name: Build Quarto website
+        run: |
+          quarto render
+
+      - name: Deploy to GitHub Pages
+        if: success()
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          cname: your-lab.uark.edu/weather-reports  # Optional: custom domain
+
+      - name: Create Release
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: report-${{ github.run_number }}
+          body: |
+            Automated weekly weather report generated on ${{ github.event.head_commit.timestamp }}
+
+            Generated datasets:
+            - Weather: data/outputs/datasets/weather-current-*.csv
+            - Soil Water: data/outputs/datasets/soil-water-*.csv
+            - Forecast: data/outputs/datasets/forecast-*.csv
+          files: |
+            data/outputs/datasets/*.csv
+            data/outputs/reports/*.html
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: 1,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ Weekly report generation failed. Check logs: ' + context.server_url + '/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId
+            })
