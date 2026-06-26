@@ -1,6 +1,0 @@
-name,station_id,latitude,longitude,elevation_m,state,county,established,active
-Fayetteville (UA Research Center),FAY,36.0726,-94.1741,395,AR,Washington,1995,TRUE
-Marianna (SE Arkansas Agr. Center),MAR,34.7550,-90.7742,72,AR,Lee,1998,TRUE
-Pine Bluff (SE Arkansas Agr. Center - South),PB,34.2250,-92.0042,61,AR,Jefferson,1996,TRUE
-Rohwer (SE Arkansas Agr. Center - East),ROH,34.3856,-91.0825,71,AR,Desha,1994,TRUE
-Hope (Hope Station),HOP,33.6674,-93.5839,106,AR,Hempstead,1999,TRUE
