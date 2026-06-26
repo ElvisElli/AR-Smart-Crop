@@ -42,7 +42,7 @@ DELETE_APSIM_WORK <- TRUE   # TRUE = clean up temp APSIM files after run
 ## ─────────────────────────────────────────────────────────────────────────
 ## Run a quick test with subset of cells (for development/debugging)
 
-TEST_RUN <- TRUE            # TRUE = test mode (small dataset)
+TEST_RUN <- FALSE           # TRUE = test mode (small dataset)
                             # FALSE = full production run
 
 TEST_N_CELLS <- 5           # Number of cells to test
@@ -62,8 +62,8 @@ VERBOSE <- TRUE                 # TRUE = detailed console output (must be define
 PATH_SIM_GRID     <- "data/raw/sim-grid.rds"
 PATH_WEATHER      <- "data/raw/weather"
 
-# Soil path: use soil_sample if available (for testing), else soil (production)
-PATH_SOIL         <- if (dir.exists("data/raw/soil_sample")) "data/raw/soil_sample" else "data/raw/soil"
+# Soil path
+PATH_SOIL         <- "data/raw/soil"
 PATH_TEMPLATES    <- "templates"
 PATH_CHECKPOINTS  <- "data/outputs/checkpoints"
 PATH_PROCESSED    <- "data/processed"
