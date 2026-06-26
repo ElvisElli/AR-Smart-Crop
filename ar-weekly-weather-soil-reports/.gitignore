@@ -2,8 +2,7 @@
 .Rhistory
 .Rdata
 .Ruserdata
-*.Rproj
-*.Rproj.user
+.Rproj.user
 
 # Compiled Documents
 *.html
