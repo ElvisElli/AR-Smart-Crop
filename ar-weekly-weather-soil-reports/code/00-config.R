@@ -1,176 +1,151 @@
-# Global configuration for AR weekly weather & soil water reports
-# Edit this file to customize pipeline behavior
+# ═══════════════════════════════════════════════════════════════════════════
+# AR Weekly Weather & Soil Water Reports — Configuration
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# This file contains ALL user-configurable settings.
+# Edit this file to customize pipeline behavior.
+# All subsequent scripts source this file at startup.
+# ═══════════════════════════════════════════════════════════════════════════
 
-# ============================================================================
-# 1. RESEARCH STATIONS & GRID COVERAGE
-# ============================================================================
+## ─────────────────────────────────────────────────────────────────────────
+## 1. SIMULATION WINDOW
+## ─────────────────────────────────────────────────────────────────────────
+## Set dates for the week to simulate
+## Format: "YYYY-MM-DD"
 
-# Primary research stations (update from data/raw/research-stations.csv)
-STATIONS <- c(
-  "Fayetteville",
-  "Marianna",
-  "Pine Bluff",
-  "Rohwer",
-  "Hope"
-)
+DATE_START <- "2025-06-16"   # Week start (Monday)
+DATE_END   <- "2025-06-22"   # Week end (Sunday)
 
-# Grid coverage
-GRID_RESOLUTION_KM <- 5         # 5 km spatial resolution for state grid
-GRID_CRS <- 4326                # WGS84 (lat/lon)
+## ─────────────────────────────────────────────────────────────────────────
+## 2. PARALLEL PROCESSING
+## ─────────────────────────────────────────────────────────────────────────
 
-# ============================================================================
-# 2. WEATHER DATA SOURCES
-# ============================================================================
+CHUNK_SIZE <- 50            # Cells per parallel task (50 = moderate)
+                            # Lower (25) if memory-constrained
+                            # Higher (100) for faster completion
 
-# Current/historical weather API
-WEATHER_API <- "iemaps"         # Options: "iemaps" (IEM), "openmeteo"
+N_CORES <- NA               # NA = auto-detect (detectCores() - 1)
+                            # Set to fixed number to override
 
-# Weather forecast API
-FORECAST_API <- "openmeteo"     # Options: "openmeteo" (required)
-FORECAST_DAYS <- 7              # Days ahead to forecast (1-10)
+## ─────────────────────────────────────────────────────────────────────────
+## 3. RESUMABILITY & RERUN
+## ─────────────────────────────────────────────────────────────────────────
 
-# API rate limiting
-API_DELAY_SECONDS <- 2          # Delay between API requests (avoid rate limits)
-API_TIMEOUT_SECONDS <- 30       # Max wait per request
+FORCE_RERUN_SIM <- FALSE    # TRUE = delete all checkpoints, run from scratch
+                            # FALSE = resume from last completed chunk
 
-# ============================================================================
-# 3. SOIL WATER MODEL PARAMETERS
-# ============================================================================
+DELETE_APSIM_WORK <- TRUE   # TRUE = clean up temp APSIM files after run
+                            # FALSE = keep for debugging
 
-# Bucket model configuration
-SOIL_MODEL_TYPE <- "bucket"     # Options: "bucket", "richards" (future)
+## ─────────────────────────────────────────────────────────────────────────
+## 4. TEST MODE
+## ─────────────────────────────────────────────────────────────────────────
+## Run a quick test with subset of cells (for development/debugging)
 
-# Available Water Capacity (fraction of soil depth that plants can use)
-# Typical range: 0.15–0.30 depending on soil type
-AWC_DEFAULT <- 0.20             # 20% (medium loam, typical for Arkansas)
+TEST_RUN <- FALSE           # TRUE = test mode (small dataset)
+                            # FALSE = full production run
 
-# Starting soil moisture (as fraction of AWC at model start)
-# 0.5 = field capacity, 1.0 = saturated, 0 = wilting point
-INITIAL_SOIL_MOISTURE <- 0.5
+TEST_N_CELLS <- 20          # Number of cells to test
+TEST_N_GRID_CELLS <- 20     # If full grid, use first N cells
 
-# Wilting point (soil water stress threshold)
-# Relative soil water below this triggers crop stress alert
-STRESS_THRESHOLD <- 0.5         # Stress when <50% available water
+## ─────────────────────────────────────────────────────────────────────────
+## 4b. NOTIFICATION & LOGGING (moved earlier to avoid forward reference)
+## ─────────────────────────────────────────────────────────────────────────
 
-# Evapotranspiration (ET) method
-ET_METHOD <- "hargreaves"       # Options: "hargreaves", "penman-monteith"
-ET_CROP_COEFFICIENT <- 1.0      # Adjustment for current crop stage
+VERBOSE <- TRUE                 # TRUE = detailed console output (must be defined early)
 
-# ============================================================================
-# 4. HISTORICAL BASELINE STATISTICS
-# ============================================================================
+## ─────────────────────────────────────────────────────────────────────────
+## 5. DATA PATHS
+## ─────────────────────────────────────────────────────────────────────────
+## All relative to repo root
 
-# Years used to compute "normal" conditions
-BASELINE_START <- 1995
-BASELINE_END <- 2020
+PATH_SIM_GRID     <- "data/raw/sim-grid.rds"
+PATH_WEATHER      <- "data/raw/weather"
+PATH_SOIL         <- "data/raw/soil"
+PATH_TEMPLATES    <- "templates"
+PATH_CHECKPOINTS  <- "data/outputs/checkpoints"
+PATH_PROCESSED    <- "data/processed"
+PATH_OUTPUTS      <- "data/outputs"
 
-# Percentile thresholds for anomaly classification
-PERCENTILE_THRESHOLDS <- list(
-  wet = 75,      # Above 75th percentile = "wet"
-  normal_wet = 50,
-  normal_dry = 50,
-  dry = 25       # Below 25th percentile = "dry"
-)
+## Optional: Local data cache (faster than network drive)
+## Set to NULL to use paths above
+## On Windows: "C:/temp/soybean-data" (copy from Box once, reuse)
+LOCAL_DATA_CACHE <- NULL
 
-# ============================================================================
-# 5. REPORT GENERATION
-# ============================================================================
+## Sample data for testing (cloud)
+## TRUE = use sample weather files (data/raw/weather_sample/)
+## FALSE = use full files (data/raw/weather/)
+## Auto-detects: TRUE in cloud, FALSE on local Windows
+USE_SAMPLE_DATA <- grepl("cloud|lambda|codespaces", tolower(Sys.info()["nodename"]))
 
-# Report date (set to Sys.Date() for current week, or override)
-REPORT_DATE <- Sys.Date()
+if (VERBOSE) {
+  cat(sprintf("Sample data mode  : %s\n", if(USE_SAMPLE_DATA) "TRUE (testing)" else "FALSE (production)"))
+}
 
-# Report timezone (for date labels, formatting)
-REPORT_TIMEZONE <- "America/Chicago"
+## ─────────────────────────────────────────────────────────────────────────
+## 6. APSIM CONFIGURATION
+## ─────────────────────────────────────────────────────────────────────────
 
-# Report format
-REPORT_FORMAT <- "html"         # Options: "html" (recommended), "pdf"
+APSIM_TEMPLATE  <- "baseline.apsimx"  # Template filename in templates/
+APSIM_EXE       <- NULL               # NULL = auto-detect
+                                      # Or set manually: "C:/Program Files/APSIM2025.3.7681.0/bin/Models.exe"
 
-# Include detailed station pages?
-INCLUDE_STATION_PAGES <- TRUE
+## Root depth parameters (20 soil layers)
+KL_VEC <- c(0.08, 0.08, 0.08, 0.08, 0.07, 0.07, 0.07, 0.07,
+            0.06, 0.06, 0.06, 0.06, 0.05, 0.05, 0.04, 0.04,
+            0.03, 0.03, 0.02, 0.02)
 
-# Number of historical days to show in station detail
-STATION_DETAIL_DAYS <- 30
+XF_VEC <- c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0)
 
-# ============================================================================
-# 6. OUTPUT PATHS
-# ============================================================================
+## ─────────────────────────────────────────────────────────────────────────
+## 7. SIMULATION PARAMETERS
+## ─────────────────────────────────────────────────────────────────────────
 
-# All paths are relative to repo root
-PATH_RAW_STATIONS <- "data/raw/research-stations.csv"
-PATH_RAW_SOIL <- "data/raw/soil-properties"
-PATH_RAW_HISTORICAL <- "data/raw/historical-weather"
+CULTIVAR     <- "PurcellMG4"    # Soybean cultivar (MG4 = Midwest Group 4)
+SOW_DATE     <- "15-May"        # Sowing date (format: "DD-Mon")
+ROW_SPACING  <- 750             # Row spacing in cm
+CO2_PPM      <- 350             # Atmospheric CO2 (ppm)
 
-PATH_PROCESSED_DATA <- "data/processed"
-PATH_OUTPUT_REPORTS <- "data/outputs/reports"
-PATH_OUTPUT_DATASETS <- "data/outputs/datasets"
+## ─────────────────────────────────────────────────────────────────────────
+## 8. NOTIFICATION & LOGGING (continued)
+## ─────────────────────────────────────────────────────────────────────────
 
-# Cache directory (for API responses, historical data)
-PATH_CACHE <- "data/cache"
+NOTIFY  <- FALSE                # TRUE = send email on completion
+                                # Requires Gmail setup (see CLAUDE.md)
 
-# ============================================================================
-# 7. LOGGING & DEBUG
-# ============================================================================
+LOG_FILE <- "data/outputs/sim-run-log.csv"  # Progress tracking
 
-# Verbose logging?
-VERBOSE <- TRUE
+## ─────────────────────────────────────────────────────────────────────────
+## 9. REPORTING & WEBSITE
+## ─────────────────────────────────────────────────────────────────────────
 
-# Log file (set to NULL to print to console only)
-LOG_FILE <- "data/logs/pipeline.log"
+REPORT_FORMAT <- "html"         # "html" or "pdf"
+BUILD_WEBSITE <- TRUE           # TRUE = build Quarto website
+PUBLISH_GITHUB_PAGES <- FALSE   # TRUE = deploy to GitHub Pages
 
-# Save intermediate plots for debugging?
-DEBUG_PLOTS <- FALSE
+## ─────────────────────────────────────────────────────────────────────────
+## 10. DIAGNOSTIC MODE
+## ─────────────────────────────────────────────────────────────────────────
+## For troubleshooting: run single cell with full APSIM output
 
-# ============================================================================
-# 8. PERFORMANCE & SCALING
-# ============================================================================
+RUN_DIAGNOSTIC <- FALSE         # TRUE = run single cell, see APSIM output
+DIAG_CELL_ID   <- 1             # Which cell to diagnose
 
-# Number of parallel cores to use (NA = auto-detect, leave 2 free)
-N_CORES <- NA
+## ═══════════════════════════════════════════════════════════════════════════
+## END OF CONFIGURATION
+## ═══════════════════════════════════════════════════════════════════════════
 
-# Batch size for grid cell processing
-BATCH_SIZE <- 50
-
-# Resume from checkpoint? (if TRUE, skips completed steps)
-RESUME_FROM_CHECKPOINT <- TRUE
-
-# ============================================================================
-# 9. FEATURE FLAGS (experimental features)
-# ============================================================================
-
-# Include fire weather index?
-INCLUDE_FIRE_WEATHER <- FALSE
-
-# Include agricultural drought monitor integration?
-INCLUDE_DROUGHT_MONITOR <- FALSE
-
-# Include phenology predictions (crop development stage)?
-INCLUDE_PHENOLOGY <- FALSE
-
-# Generate datasets for machine learning models?
-INCLUDE_ML_DATASETS <- FALSE
-
-# ============================================================================
-# 10. QUARTO WEBSITE INTEGRATION
-# ============================================================================
-
-# Build Quarto website with report?
-BUILD_QUARTO_WEBSITE <- TRUE
-
-# Quarto website directory (relative to repo root)
-PATH_QUARTO_SITE <- "_site"
-
-# Publish to GitHub Pages?
-PUBLISH_TO_GITHUB_PAGES <- FALSE
-
-# ============================================================================
-# END OF CONFIGURATION
-# ============================================================================
-
-# Save config summary
-cat("\n=== AR Weekly Weather & Soil Water Reports ===\n")
-cat("Report date:", format(REPORT_DATE, "%Y-%m-%d"), "\n")
-cat("Stations:", paste(STATIONS, collapse = ", "), "\n")
-cat("Weather API:", WEATHER_API, "\n")
-cat("Soil model:", SOIL_MODEL_TYPE, "| AWC:", AWC_DEFAULT, "\n")
-cat("Baseline:", BASELINE_START, "–", BASELINE_END, "\n")
-cat("Output:", PATH_OUTPUT_REPORTS, "\n\n")
+# Print summary
+if (VERBOSE) {
+  cat("\n")
+  cat(strrep("=", 70), "\n")
+  cat("AR WEEKLY WEATHER & SOIL WATER REPORTS — Configuration Loaded\n")
+  cat(strrep("=", 70), "\n")
+  cat(sprintf("Simulation window : %s to %s\n", DATE_START, DATE_END))
+  cat(sprintf("Parallel cores    : %s\n", if(is.na(N_CORES)) "auto-detect" else N_CORES))
+  cat(sprintf("Chunk size        : %d cells/task\n", CHUNK_SIZE))
+  cat(sprintf("Test mode         : %s\n", if(TEST_RUN) sprintf("TRUE (%d cells)", TEST_N_CELLS) else "FALSE"))
+  cat(sprintf("Cultivar          : %s | Sowing: %s\n", CULTIVAR, SOW_DATE))
+  cat(sprintf("Template          : %s\n", APSIM_TEMPLATE))
+  cat(strrep("=", 70), "\n\n")
+}

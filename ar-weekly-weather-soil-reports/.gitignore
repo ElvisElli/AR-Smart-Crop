@@ -10,13 +10,17 @@
 *.pdf
 
 # Data Files (Large, not tracked)
-data/raw/historical-weather/**
-data/raw/soil-properties/**
-data/cache/**
-data/processed/**
-data/outputs/reports/*.html
-data/outputs/reports/*.pdf
-data/outputs/datasets/*.csv
+data/raw/historical-weather/
+data/raw/weather/
+data/raw/weather_sample/
+data/raw/soil/
+data/raw/soil-properties/
+data/processed/
+data/outputs/checkpoints/
+data/outputs/reports/
+data/outputs/*.rds
+data/outputs/*.csv
+data/cache/
 
 # Logs
 data/logs/**
