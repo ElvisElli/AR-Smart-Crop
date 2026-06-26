@@ -42,10 +42,10 @@ DELETE_APSIM_WORK <- TRUE   # TRUE = clean up temp APSIM files after run
 ## ─────────────────────────────────────────────────────────────────────────
 ## Run a quick test with subset of cells (for development/debugging)
 
-TEST_RUN <- FALSE           # TRUE = test mode (small dataset)
+TEST_RUN <- TRUE            # TRUE = test mode (small dataset)
                             # FALSE = full production run
 
-TEST_N_CELLS <- 20          # Number of cells to test
+TEST_N_CELLS <- 5           # Number of cells to test
 TEST_N_GRID_CELLS <- 20     # If full grid, use first N cells
 
 ## ─────────────────────────────────────────────────────────────────────────
