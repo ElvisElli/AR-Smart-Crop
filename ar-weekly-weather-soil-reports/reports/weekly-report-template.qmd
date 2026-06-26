@@ -1,0 +1,226 @@
+---
+title: "Arkansas Weekly Soil Water Status Report"
+subtitle: "Week of {{WEEK_START}} to {{WEEK_END}}"
+date: "{{REPORT_DATE}}"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    code-fold: true
+    fig-width: 10
+    fig-height: 6
+params:
+  data_file: null
+  week: null
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(readr)
+
+# Load data
+data <- read_csv(params$data_file, show_col_types = FALSE)
+
+# Extract week info
+year <- unique(data$year)
+week <- unique(data$week)
+week_start <- unique(data$week_start)[1]
+week_end <- unique(data$week_end)[1]
+n_cells <- nrow(data)
+```
+
+## Executive Summary
+
+This report summarizes soil water holding capacity (SWHC) conditions across {{N_CELLS}} Arkansas cropland grid cells for week **{{WEEK}}** ({{WEEK_START}} – {{WEEK_END}}).
+
+**Key Metrics:**
+- **6-inch depth:** Mean = {{SWHC_6IN_MEAN}} mm (range: {{SWHC_6IN_MIN}}–{{SWHC_6IN_MAX}} mm)
+- **12-inch depth:** Mean = {{SWHC_12IN_MEAN}} mm (range: {{SWHC_12IN_MIN}}–{{SWHC_12IN_MAX}} mm)
+- **24-inch depth:** Mean = {{SWHC_24IN_MEAN}} mm (range: {{SWHC_24IN_MIN}}–{{SWHC_24IN_MAX}} mm)
+
+### Interpretation
+Soil water availability increases with depth (expected for Arkansas soils). All depths show realistic variation across the spatial domain.
+
+---
+
+## Spatial Distribution
+
+### 6-Inch Depth Soil Water
+
+```{r map-6in}
+ggplot(data, aes(x = x, y = y, color = swhc_6in_mean)) +
+  geom_point(size = 3, alpha = 0.7) +
+  scale_color_viridis_c(option = "plasma", name = "SWHC (mm)") +
+  labs(
+    title = "Soil Water Holding Capacity - 6-Inch Depth",
+    subtitle = paste("Week", week, "–", year),
+    x = "Longitude", y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    legend.position = "right"
+  )
+```
+
+### 12-Inch Depth Soil Water
+
+```{r map-12in}
+ggplot(data, aes(x = x, y = y, color = swhc_12in_mean)) +
+  geom_point(size = 3, alpha = 0.7) +
+  scale_color_viridis_c(option = "viridis", name = "SWHC (mm)") +
+  labs(
+    title = "Soil Water Holding Capacity - 12-Inch Depth",
+    subtitle = paste("Week", week, "–", year),
+    x = "Longitude", y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    legend.position = "right"
+  )
+```
+
+### 24-Inch Depth Soil Water
+
+```{r map-24in}
+ggplot(data, aes(x = x, y = y, color = swhc_24in_mean)) +
+  geom_point(size = 3, alpha = 0.7) +
+  scale_color_viridis_c(option = "mako", name = "SWHC (mm)") +
+  labs(
+    title = "Soil Water Holding Capacity - 24-Inch Depth",
+    subtitle = paste("Week", week, "–", year),
+    x = "Longitude", y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    legend.position = "right"
+  )
+```
+
+---
+
+## Distribution Statistics
+
+### Depth-Wise Comparison
+
+```{r depth-comparison}
+# Prepare data for comparison
+depth_stats <- data.frame(
+  Depth = c("6-inch", "12-inch", "24-inch"),
+  Mean = c(
+    mean(data$swhc_6in_mean, na.rm = TRUE),
+    mean(data$swhc_12in_mean, na.rm = TRUE),
+    mean(data$swhc_24in_mean, na.rm = TRUE)
+  ),
+  Min = c(
+    min(data$swhc_6in_min, na.rm = TRUE),
+    min(data$swhc_12in_min, na.rm = TRUE),
+    min(data$swhc_24in_min, na.rm = TRUE)
+  ),
+  Max = c(
+    max(data$swhc_6in_max, na.rm = TRUE),
+    max(data$swhc_12in_max, na.rm = TRUE),
+    max(data$swhc_24in_max, na.rm = TRUE)
+  )
+)
+
+ggplot(depth_stats, aes(x = Depth, y = Mean, fill = Depth)) +
+  geom_col(alpha = 0.7) +
+  geom_errorbar(aes(ymin = Min, ymax = Max), width = 0.2, color = "black") +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  labs(
+    title = "Soil Water Holding Capacity by Depth",
+    subtitle = "Mean with min/max range",
+    y = "SWHC (mm)",
+    x = "Soil Depth"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    axis.text.x = element_text(size = 11)
+  )
+```
+
+### Distribution by Depth
+
+```{r distribution-boxplot}
+# Prepare long format for boxplot
+data_long <- data %>%
+  select(cellid, swhc_6in_mean, swhc_12in_mean, swhc_24in_mean) %>%
+  tidyr::pivot_longer(
+    cols = starts_with("swhc_"),
+    names_to = "Depth",
+    values_to = "SWHC_mm"
+  ) %>%
+  mutate(Depth = factor(
+    gsub("swhc_|_mean", "", Depth),
+    levels = c("6in", "12in", "24in")
+  ))
+
+ggplot(data_long, aes(x = Depth, y = SWHC_mm, fill = Depth)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.2, alpha = 0.3, size = 2) +
+  scale_fill_brewer(palette = "Set2", guide = "none") +
+  labs(
+    title = "Distribution of Soil Water Across Grid Cells",
+    subtitle = paste("Week", week, "–", year),
+    y = "SWHC (mm)",
+    x = "Soil Depth"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold")
+  )
+```
+
+---
+
+## Data Summary Table
+
+```{r summary-table}
+summary_table <- data %>%
+  select(cellid, x, y, swhc_6in_mean, swhc_12in_mean, swhc_24in_mean) %>%
+  head(20) %>%
+  mutate(across(starts_with("swhc"), round, 1))
+
+knitr::kable(
+  summary_table,
+  col.names = c("Cell ID", "Longitude", "Latitude", "6in (mm)", "12in (mm)", "24in (mm)"),
+  caption = paste("Sample of first 20 cells (out of", n_cells, "total)")
+)
+```
+
+---
+
+## Methods
+
+**Data Source:** APSIM Next Generation crop simulations (baseline MG4 soybean scenario)
+
+**Processing:**
+1. Grid simulations run for each cell with local weather and soil profiles
+2. Soil water metrics extracted daily (swhc_6in, swhc_12in, swhc_24in)
+3. Weekly aggregation: mean, min, max per depth per cell
+4. Report generated automatically via Quarto
+
+**Time Window:** `r format(week_start, "%Y-%m-%d")` to `r format(week_end, "%Y-%m-%d")`
+
+**Grid Cells:** `r n_cells` cultivated cells across Arkansas
+
+---
+
+## Technical Details
+
+- **Report Generated:** `r Sys.time()`
+- **R Version:** `r R.version$version.string`
+- **Packages:** dplyr, ggplot2, readr, tidyr
+
+---
+
+**Questions?** Contact the AR Crop Modeling program
+**Data:** Available in `data/outputs/soil-water-status-YYYY-WXX.csv`
