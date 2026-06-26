@@ -8,13 +8,29 @@
 # ═══════════════════════════════════════════════════════════════════════════
 
 ## ─────────────────────────────────────────────────────────────────────────
-## 1. SIMULATION WINDOW
+## 1. SIMULATION MODE & WINDOW
 ## ─────────────────────────────────────────────────────────────────────────
-## Set dates for the week to simulate
+## Choose simulation mode: "weekly", "historical", or "forecast"
 ## Format: "YYYY-MM-DD"
 
-DATE_START <- "2025-06-16"   # Week start (Monday)
-DATE_END   <- "2025-06-22"   # Week end (Sunday)
+SIMULATION_MODE <- "weekly"   # "weekly" | "historical" | "forecast"
+
+# Weekly mode: Current week only (for automated scheduling)
+# Use this for: Weekly reports, benchmarking against history
+DATE_START <- "2026-01-05"   # Week start (Monday) — UPDATE FOR CURRENT WEEK
+DATE_END   <- "2026-01-11"   # Week end (Sunday)
+
+# Historical mode: 1985-2025 baseline (run once)
+# Use this for: Generate 40-year benchmark statistics
+HISTORICAL_START <- "1985-01-01"
+HISTORICAL_END   <- "2025-12-31"
+HISTORICAL_AGGREGATION <- "yearly"  # "yearly" | "decadal" | "full-period"
+
+# Forecast mode: Next 7 days with weather forecast
+# Use this for: Predict conditions at research stations
+FORECAST_START <- "2026-01-12"   # Next week start
+FORECAST_END   <- "2026-01-18"   # Next week end
+FORECAST_DATA_SOURCE <- NULL     # Path to forecast .met files (if different)
 
 ## ─────────────────────────────────────────────────────────────────────────
 ## 2. PARALLEL PROCESSING
@@ -60,14 +76,23 @@ VERBOSE <- TRUE                 # TRUE = detailed console output (must be define
 ## All relative to repo root
 
 PATH_SIM_GRID     <- "data/raw/sim-grid.rds"
-PATH_WEATHER      <- "data/raw/weather"
 
-# Soil path
+# Weather data paths by mode
+PATH_WEATHER      <- if (SIMULATION_MODE == "forecast" && !is.null(FORECAST_DATA_SOURCE)) {
+                      FORECAST_DATA_SOURCE
+                    } else {
+                      "data/raw/weather"
+                    }
+
+PATH_HISTORICAL_WEATHER <- "data/raw/weather_historical"  # For 1985-2025 baseline
 PATH_SOIL         <- "data/raw/soil"
 PATH_TEMPLATES    <- "templates"
-PATH_CHECKPOINTS  <- "data/outputs/checkpoints"
-PATH_PROCESSED    <- "data/processed"
+
+# Output paths by mode
+PATH_CHECKPOINTS  <- sprintf("data/outputs/checkpoints/%s", SIMULATION_MODE)
+PATH_PROCESSED    <- sprintf("data/processed/%s", SIMULATION_MODE)
 PATH_OUTPUTS      <- "data/outputs"
+PATH_BENCHMARK    <- "data/outputs/benchmark"  # For historical statistics
 
 ## Optional: Local data cache (faster than network drive)
 ## Set to NULL to use paths above
@@ -118,15 +143,26 @@ NOTIFY  <- FALSE                # TRUE = send email on completion
 LOG_FILE <- "data/outputs/sim-run-log.csv"  # Progress tracking
 
 ## ─────────────────────────────────────────────────────────────────────────
-## 9. REPORTING & WEBSITE
+## 9. BENCHMARK & COMPARISONS (Weekly mode only)
+## ─────────────────────────────────────────────────────────────────────────
+
+USE_BENCHMARK <- TRUE                      # TRUE = compare against historical data
+BENCHMARK_FILE <- "data/outputs/benchmark/historical-statistics.rds"  # 40-year stats
+
+# Which benchmark periods to show in reports
+BENCHMARK_PERIODS <- c("40-year mean", "decadal mean", "climatology")  # vs. current week
+
+## ─────────────────────────────────────────────────────────────────────────
+## 10. REPORTING & WEBSITE
 ## ─────────────────────────────────────────────────────────────────────────
 
 REPORT_FORMAT <- "html"         # "html" or "pdf"
 BUILD_WEBSITE <- TRUE           # TRUE = build Quarto website
 PUBLISH_GITHUB_PAGES <- FALSE   # TRUE = deploy to GitHub Pages
+INCLUDE_BENCHMARK_TABLES <- (SIMULATION_MODE == "weekly" && USE_BENCHMARK)
 
 ## ─────────────────────────────────────────────────────────────────────────
-## 10. DIAGNOSTIC MODE
+## 11. DIAGNOSTIC MODE
 ## ─────────────────────────────────────────────────────────────────────────
 ## For troubleshooting: run single cell with full APSIM output
 
@@ -134,8 +170,31 @@ RUN_DIAGNOSTIC <- FALSE         # TRUE = run single cell, see APSIM output
 DIAG_CELL_ID   <- 1             # Which cell to diagnose
 
 ## ═══════════════════════════════════════════════════════════════════════════
-## END OF CONFIGURATION
+## END OF CONFIGURATION — Auto-validation
 ## ═══════════════════════════════════════════════════════════════════════════
+
+# Validate mode selection and set dates accordingly
+if (!(SIMULATION_MODE %in% c("weekly", "historical", "forecast"))) {
+  stop(sprintf("Invalid SIMULATION_MODE: %s. Use 'weekly', 'historical', or 'forecast'", SIMULATION_MODE))
+}
+
+# Set active date range based on mode
+ACTIVE_DATE_START <- switch(SIMULATION_MODE,
+  "weekly" = DATE_START,
+  "historical" = HISTORICAL_START,
+  "forecast" = FORECAST_START
+)
+
+ACTIVE_DATE_END <- switch(SIMULATION_MODE,
+  "weekly" = DATE_END,
+  "historical" = HISTORICAL_END,
+  "forecast" = FORECAST_END
+)
+
+# Create necessary directories
+dir.create(dirname(PATH_CHECKPOINTS), showWarnings = FALSE, recursive = TRUE)
+dir.create(dirname(PATH_PROCESSED), showWarnings = FALSE, recursive = TRUE)
+dir.create(PATH_BENCHMARK, showWarnings = FALSE, recursive = TRUE)
 
 # Print summary
 if (VERBOSE) {
@@ -143,10 +202,14 @@ if (VERBOSE) {
   cat(strrep("=", 70), "\n")
   cat("AR WEEKLY WEATHER & SOIL WATER REPORTS — Configuration Loaded\n")
   cat(strrep("=", 70), "\n")
-  cat(sprintf("Simulation window : %s to %s\n", DATE_START, DATE_END))
+  cat(sprintf("Simulation mode   : %s\n", toupper(SIMULATION_MODE)))
+  cat(sprintf("Date window       : %s to %s\n", ACTIVE_DATE_START, ACTIVE_DATE_END))
   cat(sprintf("Parallel cores    : %s\n", if(is.na(N_CORES)) "auto-detect" else N_CORES))
   cat(sprintf("Chunk size        : %d cells/task\n", CHUNK_SIZE))
   cat(sprintf("Test mode         : %s\n", if(TEST_RUN) sprintf("TRUE (%d cells)", TEST_N_CELLS) else "FALSE"))
+  if (SIMULATION_MODE == "weekly") {
+    cat(sprintf("Benchmarking      : %s\n", if(USE_BENCHMARK) "YES (vs. 40-year baseline)" else "NO"))
+  }
   cat(sprintf("Cultivar          : %s | Sowing: %s\n", CULTIVAR, SOW_DATE))
   cat(sprintf("Template          : %s\n", APSIM_TEMPLATE))
   cat(strrep("=", 70), "\n\n")
