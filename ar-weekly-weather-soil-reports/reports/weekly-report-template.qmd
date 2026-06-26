@@ -181,6 +181,103 @@ ggplot(data_long, aes(x = Depth, y = SWHC_mm, fill = Depth)) +
 
 ---
 
+## Benchmark Comparisons (vs. 40-Year Baseline)
+
+```{r benchmark-check}
+has_benchmark <- !is.na(data$swhc_6in_40yr_mean[1])
+```
+
+`r if(has_benchmark) "This section compares current week conditions to the 40-year (1985-2025) historical baseline." else "**Benchmark data not available.** Run Phase 5 to generate 40-year baseline statistics: source('code/05-generate-historical-benchmark.R')"`
+
+### Current vs. 40-Year Mean
+
+```{r benchmark-comparison, eval=has_benchmark}
+# Prepare benchmark comparison data
+benchmark_comp <- data %>%
+  filter(!is.na(swhc_6in_40yr_mean)) %>%
+  select(
+    depth = starts_with("swhc_"),
+    baseline = starts_with("swhc_.*_40yr_mean")
+  ) %>%
+  summarise(
+    current_6in = mean(swhc_6in_mean, na.rm = TRUE),
+    baseline_6in = mean(swhc_6in_40yr_mean, na.rm = TRUE),
+    current_12in = mean(swhc_12in_mean, na.rm = TRUE),
+    baseline_12in = mean(swhc_12in_40yr_mean, na.rm = TRUE),
+    current_24in = mean(swhc_24in_mean, na.rm = TRUE),
+    baseline_24in = mean(swhc_24in_40yr_mean, na.rm = TRUE)
+  )
+
+comp_data <- data.frame(
+  Depth = c("6-inch", "12-inch", "24-inch"),
+  Current = c(benchmark_comp$current_6in, benchmark_comp$current_12in, benchmark_comp$current_24in),
+  Baseline = c(benchmark_comp$baseline_6in, benchmark_comp$baseline_12in, benchmark_comp$baseline_24in)
+) %>%
+  mutate(Difference = Current - Baseline)
+
+comp_long <- comp_data %>%
+  pivot_longer(cols = c("Current", "Baseline"), names_to = "Type", values_to = "SWHC_mm")
+
+ggplot(comp_long, aes(x = Depth, y = SWHC_mm, fill = Type)) +
+  geom_col(position = "dodge", alpha = 0.7) +
+  scale_fill_manual(values = c("Current" = "#E69F00", "Baseline" = "#56B4E9")) +
+  labs(
+    title = "Current Week vs. 40-Year Mean",
+    y = "SWHC (mm)",
+    x = "Soil Depth",
+    fill = "Period"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    legend.position = "bottom"
+  )
+```
+
+### Benchmark Statistics Table
+
+```{r benchmark-table, eval=has_benchmark}
+benchmark_summary <- data %>%
+  filter(!is.na(swhc_6in_40yr_mean)) %>%
+  summarise(
+    Depth = c("6-inch", "12-inch", "24-inch"),
+    Current_Mean = c(
+      mean(swhc_6in_mean, na.rm = TRUE),
+      mean(swhc_12in_mean, na.rm = TRUE),
+      mean(swhc_24in_mean, na.rm = TRUE)
+    ),
+    `40yr Mean` = c(
+      mean(swhc_6in_40yr_mean, na.rm = TRUE),
+      mean(swhc_12in_40yr_mean, na.rm = TRUE),
+      mean(swhc_24in_40yr_mean, na.rm = TRUE)
+    ),
+    `40yr SD` = c(
+      mean(swhc_6in_40yr_sd, na.rm = TRUE),
+      mean(swhc_12in_40yr_sd, na.rm = TRUE),
+      mean(swhc_24in_40yr_sd, na.rm = TRUE)
+    ),
+    `P10` = c(
+      mean(swhc_6in_p10, na.rm = TRUE),
+      mean(swhc_12in_p10, na.rm = TRUE),
+      mean(swhc_24in_p10, na.rm = TRUE)
+    ),
+    `P90` = c(
+      mean(swhc_6in_p90, na.rm = TRUE),
+      mean(swhc_12in_p90, na.rm = TRUE),
+      mean(swhc_24in_p90, na.rm = TRUE)
+    )
+  ) %>%
+  mutate(across(where(is.numeric), round, 1))
+
+knitr::kable(
+  benchmark_summary,
+  col.names = c("Depth", "Current (mm)", "40yr Mean (mm)", "40yr SD (mm)", "P10 (mm)", "P90 (mm)"),
+  caption = "Soil water statistics: current week vs. 40-year baseline"
+)
+```
+
+---
+
 ## Data Summary Table
 
 ```{r summary-table}
