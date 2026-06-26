@@ -27,6 +27,22 @@ start_time <- Sys.time()
 
 source("code/00-config.R", local = TRUE)
 
+## ── Phase 0: Weather Download & Lag Check (Weekly/Forecast modes only) ────
+
+if (SIMULATION_MODE %in% c("weekly", "forecast")) {
+  cat(strrep("─", 70), "\n")
+  cat("PHASE 0: Weather Data Download & Lag Check\n")
+  cat(strrep("─", 70), "\n")
+
+  tryCatch({
+    source("code/00-download-weather.R")
+    cat(sprintf("\n✓ Phase 0 completed\n\n"))
+  }, error = function(e) {
+    cat(sprintf("\n⚠ Phase 0 WARNING: %s\n", e$message))
+    cat("Proceeding with existing weather data.\n\n")
+  })
+}
+
 cat(sprintf("Start time: %s\n", format(start_time, "%Y-%m-%d %H:%M:%S")))
 cat(sprintf("Mode: %s\n", toupper(SIMULATION_MODE)))
 cat(sprintf("Date range: %s to %s\n", ACTIVE_DATE_START, ACTIVE_DATE_END))
