@@ -61,7 +61,9 @@ VERBOSE <- TRUE                 # TRUE = detailed console output (must be define
 
 PATH_SIM_GRID     <- "data/raw/sim-grid.rds"
 PATH_WEATHER      <- "data/raw/weather"
-PATH_SOIL         <- "data/raw/soil"
+
+# Soil path: use soil_sample if available (for testing), else soil (production)
+PATH_SOIL         <- if (dir.exists("data/raw/soil_sample")) "data/raw/soil_sample" else "data/raw/soil"
 PATH_TEMPLATES    <- "templates"
 PATH_CHECKPOINTS  <- "data/outputs/checkpoints"
 PATH_PROCESSED    <- "data/processed"
