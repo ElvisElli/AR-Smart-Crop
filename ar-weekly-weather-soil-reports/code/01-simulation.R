@@ -147,7 +147,12 @@ if (!file.exists(PATH_SIM_GRID)) {
 }
 
 sim.grid <- readRDS(PATH_SIM_GRID)
-sim.grid$cellid <- seq_len(nrow(sim.grid))
+
+# Only create cellid if it doesn't exist (preserve existing cellids)
+if (!"cellid" %in% names(sim.grid)) {
+  sim.grid$cellid <- seq_len(nrow(sim.grid))
+}
+
 sim.grid1 <- dplyr::filter(sim.grid, !is.na(cultivated))
 
 message(sprintf("[INFO] Grid cells: %d total | %d cultivated",
@@ -189,8 +194,8 @@ dir.create(apsim_dir, recursive = TRUE, showWarnings = FALSE)
 message("[PATHS] APSIM work: ", apsim_dir)
 
 ## ── Root parameters ─────────────────────────────────────────────────────
-message(sprintf("[CONFIG] KL vector: %s", paste(head(KL_VEC, 3), collapse=", "), " ...")
-message(sprintf("[CONFIG] XF vector: %s", paste(head(XF_VEC, 3), collapse=", "), " ...")
+message(sprintf("[CONFIG] KL vector: %s ...", paste(head(KL_VEC, 3), collapse=", ")))
+message(sprintf("[CONFIG] XF vector: %s ...", paste(head(XF_VEC, 3), collapse=", ")))
 
 ## ── Helper: prepare soil profile ────────────────────────────────────────
 prepare_soil <- function(soil_rds_path, KL_VEC, XF_VEC) {
@@ -252,7 +257,7 @@ tryCatch({
     c("ENV", "KL_VEC", "XF_VEC", "DATE_START", "DATE_END",
       "CULTIVAR", "SOW_DATE", "ROW_SPACING", "CO2_PPM",
       "prepare_soil", "extract_results",
-      "apsim_dir", "weather_path", "soil_path"),
+      "apsim_dir", "weather_path", "soil_path", "template_path"),
     envir = environment())
 
   clusterEvalQ(cl, {
@@ -311,8 +316,7 @@ tryCatch({
       tryCatch({
         # Copy template to temp file
         temp_file <- file.path(apsim_dir, paste0("sim-", cellid, "-", Sys.getpid(), ".apsimx"))
-        file.copy(file.path(apsim_dir, basename(template_path)), temp_file,
-                  overwrite = TRUE, force = TRUE)
+        file.copy(template_path, temp_file, overwrite = TRUE)
 
         # Set Clock dates
         edit_apsimx(file = basename(temp_file), src.dir = dirname(temp_file),
