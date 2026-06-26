@@ -47,10 +47,15 @@ run_step <- function(step_num, step_name, script_file) {
 cat("\n")
 cat(strrep("*", 70), "\n")
 cat("AR WEEKLY WEATHER & SOIL WATER REPORTS\n")
-cat(sprintf("Report Date: %s\n", format(REPORT_DATE, "%Y-%m-%d %H:%M %Z")))
-cat(sprintf("Stations: %s\n", paste(STATIONS, collapse = ", "))
-)
+cat(sprintf("Report Date: %s\n", format(Sys.Date(), "%Y-%m-%d")))
 cat(strrep("*", 70), "\n")
+
+# Step 0: Weather Check & Lag Detection
+success_0 <- run_step(
+  0,
+  "Weather Data Check & Lag Detection",
+  "code/00-download-weather.R"
+)
 
 # Step 1: Data Fetch
 success_1 <- run_step(
@@ -107,9 +112,10 @@ cat("PIPELINE SUMMARY\n")
 cat(strrep("*", 70), "\n")
 
 steps <- data.frame(
-  Step = c("01: Data Fetch", "02: Processing", "03: Benchmark",
+  Step = c("00: Weather Check", "01: Data Fetch", "02: Processing", "03: Benchmark",
            "04: Soil Water", "05: Forecast", "06: Report"),
   Status = c(
+    ifelse(success_0, "✓ PASS", "✗ FAIL"),
     ifelse(success_1, "✓ PASS", "✗ FAIL"),
     ifelse(success_2, "✓ PASS", "✗ FAIL"),
     ifelse(success_3, "✓ PASS", "✗ FAIL"),
@@ -125,10 +131,17 @@ cat("\n")
 cat(sprintf("Total Runtime: %.2f minutes\n", as.numeric(elapsed_time)))
 cat(sprintf("Completed: %s\n", format(end_time, "%Y-%m-%d %H:%M:%S %Z")))
 
-if (all(success_1, success_2, success_3, success_4, success_5, success_6)) {
+if (all(success_0, success_1, success_2, success_3, success_4, success_5, success_6)) {
   cat("\n✓ PIPELINE COMPLETE - All steps succeeded\n")
+
+  # Report weather lag status
+  if (exists("WEATHER_LAG_STATUS")) {
+    cat(sprintf("\nWeather Status: %s (%d days lag)\n", WEATHER_LAG_STATUS, WEATHER_LAG_DAYS))
+  }
+
   cat(sprintf("\nReports available at: %s/\n", PATH_OUTPUT_REPORTS))
   cat(sprintf("Datasets available at: %s/\n", PATH_OUTPUT_DATASETS))
+  cat(sprintf("Weather log: data/outputs/weather-log.csv\n"))
 
   # List generated files
   report_files <- list.files(PATH_OUTPUT_REPORTS, pattern = "*.html$")
@@ -141,6 +154,10 @@ if (all(success_1, success_2, success_3, success_4, success_5, success_6)) {
 } else {
   cat("\n✗ PIPELINE INCOMPLETE - Some steps failed\n")
   cat("Check error messages above for details\n")
+
+  if (exists("WEATHER_LAG_STATUS")) {
+    cat(sprintf("\nNote: Weather status was %s (%d days lag)\n", WEATHER_LAG_STATUS, WEATHER_LAG_DAYS))
+  }
 }
 
 cat(strrep("*", 70), "\n\n")
