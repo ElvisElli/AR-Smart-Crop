@@ -20,6 +20,7 @@ data/outputs/checkpoints/
 data/outputs/reports/
 data/outputs/*.rds
 data/outputs/*.csv
+data/outputs/*.txt
 data/cache/
 
 # Logs
