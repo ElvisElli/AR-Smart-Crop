@@ -24,58 +24,72 @@ SIMULATION_MODE <- "weekly"  # "weekly" | "historical" | "forecast"
 ```
 
 ### Mode 1: WEEKLY (Default)
-Runs current week simulation and compares to 40-year baseline for automated reporting.
+Simulates entire crop season to date (Jan-1 to present), compares to 40-year baseline.
 
 ```r
-# Edit code/00-config.R:
+# Every week: Edit code/00-config.R and update:
 SIMULATION_MODE <- "weekly"
-DATE_START <- "2026-01-05"  # Current week start
-DATE_END   <- "2026-01-11"  # Current week end
+DATE_START <- "2026-01-01"  # Season start (always Jan-1)
+DATE_END   <- "2026-06-26"  # Update to TODAY's date weekly
 USE_BENCHMARK <- TRUE       # Enable benchmark comparisons
 
-# Run full pipeline:
+# Prepare: Download weather data from Jan-1 through present day
+# Then run full pipeline:
 source("code/04-orchestrate.R")
-# Outputs: Weekly report with benchmark tables + CSV data
+
+# Outputs:
+#   - data/processed/weekly/simulation-results.rds (full season)
+#   - data/outputs/soil-water-status-2026-W26.csv (season-to-date metrics)
+#   - data/outputs/weekly-report-2026-W26.html (with benchmark comparisons)
 ```
+
+**Why season-to-date?** Soil water dynamics depend on entire season history. Weekly reports show how cumulative weather and crop development have affected soil conditions, not just one week's changes.
 
 ### Mode 2: HISTORICAL (Setup Only)
 Generates 40-year (1985-2025) baseline statistics—run once, then reuse.
 
 ```r
-# Step 1: Generate yearly simulations (runs Phase 1 only)
-source("code/00-config.R")
+# One-time setup: Generate yearly simulations (runs Phase 1 only)
 SIMULATION_MODE <- "historical"
-source("code/01-simulation.R")  # Yearly results in data/processed/historical/
+source("code/04-orchestrate.R")
+# Output: data/processed/historical/simulation-results-1985.rds through 2025.rds
 
-# Step 2: After all years complete, generate benchmark
+# After all years complete, generate benchmark:
 source("code/05-generate-historical-benchmark.R")
 # Outputs: data/outputs/benchmark/historical-statistics.rds (40-year stats)
 ```
 
-### Mode 3: FORECAST (Research Stations)
-Predicts next 7 days using weather forecast data for research station planning.
+### Mode 3: FORECAST (Research Stations - Optional)
+Simulates research stations from Jan-1 through +7 days forecast for irrigation planning.
 
 ```r
 # Edit code/00-config.R:
 SIMULATION_MODE <- "forecast"
-DATE_START <- "2026-01-12"  # Next week start
-DATE_END   <- "2026-01-18"  # Next week end
-PATH_WEATHER <- "path/to/forecast/files"  # Forecast .met files
+FORECAST_STATION_CELLS <- c(10, 50, 150)  # Your research station cell IDs
+FORECAST_RUN_CONCURRENT <- TRUE           # Run alongside weekly mode
 
-# Run full pipeline:
+# Prepare forecast weather data (Jan-1 through present + 7 days)
+# Then run pipeline:
 source("code/04-orchestrate.R")
-# Outputs: Forecast report with 7-day water predictions
+
+# Outputs:
+#   - data/processed/forecast/simulation-results.rds (selected cells)
+#   - data/outputs/soil-water-status-2026-W26.csv (research stations)
+#   - data/outputs/forecast-report-2026-W26.html (7-day outlook)
 ```
+
+**Concurrent execution:** Can run in parallel with weekly mode on separate cluster workers.
 
 ## Pipeline Phases (All Modes)
 
 ### Phase 1: APSIM Grid Simulation
 **All modes**: Runs APSIM across grid cells in parallel
-- **WEEKLY/FORECAST**: Single date range (one week)
+- **WEEKLY**: Full crop season to date (Jan-1 through present day)
+- **FORECAST**: Full season to date + 7 days forecast (research stations only if specified)
 - **HISTORICAL**: Yearly date ranges (1985-2025), one year per run
 - **Files**: `code/01-simulation.R`, `code/00-config.R`
 - **Output**: 
-  - Weekly/Forecast: `data/processed/weekly(or forecast)/simulation-results.rds`
+  - Weekly/Forecast: `data/processed/[mode]/simulation-results.rds`
   - Historical: `data/processed/historical/simulation-results-YYYY.rds` (per year)
 
 ### Phase 2: Data Processing
@@ -117,19 +131,31 @@ File: `code/00-config.R`
 # Choose simulation mode
 SIMULATION_MODE <- "weekly"   # "weekly" | "historical" | "forecast"
 
-# Weekly mode: current week
-DATE_START <- "2026-01-05"
-DATE_END   <- "2026-01-11"
+# Weekly mode: Season-to-date (Jan-1 through present)
+# UPDATE DATE_END TO TODAY'S DATE EACH WEEK
+DATE_START <- "2026-01-01"    # Always Jan-1 (season start)
+DATE_END   <- "2026-06-26"    # Today's date (update weekly)
 
 # Historical mode: 1985-2025 baseline (one-time setup)
 HISTORICAL_START <- "1985-01-01"
 HISTORICAL_END   <- "2025-12-31"
 HISTORICAL_AGGREGATION <- "yearly"  # Process by year
 
-# Forecast mode: next 7 days (optional research stations)
-FORECAST_START <- "2026-01-12"
-FORECAST_END   <- "2026-01-18"
-FORECAST_DATA_SOURCE <- NULL  # Path to forecast .met files
+# Forecast mode: Season-to-date + 7 days forecast
+FORECAST_START <- "2026-01-01"      # Season start (like weekly)
+FORECAST_END   <- "2026-07-03"      # Present + 7 days forecast
+FORECAST_DATA_SOURCE <- NULL        # Path to forecast .met files
+```
+
+### Forecast Mode Configuration
+
+```r
+# Research station cell IDs (optional subset for faster forecast runs)
+FORECAST_STATION_CELLS <- c()      # Empty = all cells
+                                   # Example: c(10, 50, 100)
+
+# Run forecast concurrently with weekly mode (separate cluster)
+FORECAST_RUN_CONCURRENT <- TRUE
 ```
 
 ### Parallel Processing
