@@ -8,73 +8,149 @@ Generate automated weekly reports on Arkansas soil water status using APSIM Next
 
 **Key difference from soybean-ar-climate-change:** 
 - Simplified to **baseline scenario only** (no climate perturbations)
-- **Weekly runs** (current week only, not 40-year simulations)
+- **Three-mode architecture**: WEEKLY (current), HISTORICAL (baseline generation), FORECAST (research stations)
+- **Weekly runs** (current week only, compared to 40-year baseline)
 - **Focus on soil water output** (swhc_6in, swhc_12in, swhc_24in)
 - **Automated scheduling** with weekly reporting & Quarto website
 
 ## Running the Pipeline
 
-### Full Pipeline (All Steps)
-```bash
-cd /path/to/ar-weekly-weather-soil-reports
-Rscript code/00-master.R
-```
+### Three-Mode Architecture
 
-### Individual Steps (Development)
+The system now supports three distinct simulation modes, configured in `code/00-config.R`:
+
 ```r
-# Test APSIM simulations only
-source("code/01-simulation.R")
-
-# After sim works, test processing
-source("code/02-processing.R")
-
-# Then test reporting
-source("code/03-generate-report.R")
+SIMULATION_MODE <- "weekly"  # "weekly" | "historical" | "forecast"
 ```
 
-## Build Phases (Iterative)
+### Mode 1: WEEKLY (Default)
+Runs current week simulation and compares to 40-year baseline for automated reporting.
 
-### ✅ Phase 1: Core APSIM Simulation (CURRENT)
-**Goal:** Verify APSIM grid simulations work with sample data  
-**Files:** 
-- `code/00-config.R` - Configuration
-- `code/01-simulation.R` - APSIM parallel grid simulations
-**Test:** Run with sample weather files, verify checkpoints created
+```r
+# Edit code/00-config.R:
+SIMULATION_MODE <- "weekly"
+DATE_START <- "2026-01-05"  # Current week start
+DATE_END   <- "2026-01-11"  # Current week end
+USE_BENCHMARK <- TRUE       # Enable benchmark comparisons
 
-### Phase 2: Data Processing (NEXT)
-**Goal:** Extract soil water values from APSIM results  
-**Files:**
-- `code/02-processing.R` - Aggregate soil water metrics
-**Output:** `data/outputs/soil-water-status-YYYY-WW.csv`
+# Run full pipeline:
+source("code/04-orchestrate.R")
+# Outputs: Weekly report with benchmark tables + CSV data
+```
 
-### Phase 3: Report Generation (THEN)
-**Goal:** Generate HTML weekly report  
-**Files:**
-- `code/03-generate-report.R` - Render Quarto/Rmarkdown
-- `reports/weekly-report-template.qmd` - Report template
-**Output:** `data/outputs/weekly-report-YYYY-WW.html`
+### Mode 2: HISTORICAL (Setup Only)
+Generates 40-year (1985-2025) baseline statistics—run once, then reuse.
 
-### Phase 4: Orchestration & Website (FINAL)
-**Goal:** Automate scheduling and Quarto website  
-**Files:**
-- `code/00-master.R` - Orchestrates phases 1-3
-- `_quarto.yml`, `index.qmd` - Website structure
-- `schedule/github-actions-workflow.yml` - Cloud automation
+```r
+# Step 1: Generate yearly simulations (runs Phase 1 only)
+source("code/00-config.R")
+SIMULATION_MODE <- "historical"
+source("code/01-simulation.R")  # Yearly results in data/processed/historical/
+
+# Step 2: After all years complete, generate benchmark
+source("code/05-generate-historical-benchmark.R")
+# Outputs: data/outputs/benchmark/historical-statistics.rds (40-year stats)
+```
+
+### Mode 3: FORECAST (Research Stations)
+Predicts next 7 days using weather forecast data for research station planning.
+
+```r
+# Edit code/00-config.R:
+SIMULATION_MODE <- "forecast"
+DATE_START <- "2026-01-12"  # Next week start
+DATE_END   <- "2026-01-18"  # Next week end
+PATH_WEATHER <- "path/to/forecast/files"  # Forecast .met files
+
+# Run full pipeline:
+source("code/04-orchestrate.R")
+# Outputs: Forecast report with 7-day water predictions
+```
+
+## Pipeline Phases (All Modes)
+
+### Phase 1: APSIM Grid Simulation
+**All modes**: Runs APSIM across grid cells in parallel
+- **WEEKLY/FORECAST**: Single date range (one week)
+- **HISTORICAL**: Yearly date ranges (1985-2025), one year per run
+- **Files**: `code/01-simulation.R`, `code/00-config.R`
+- **Output**: 
+  - Weekly/Forecast: `data/processed/weekly(or forecast)/simulation-results.rds`
+  - Historical: `data/processed/historical/simulation-results-YYYY.rds` (per year)
+
+### Phase 2: Data Processing
+**Weekly/Forecast only** (Historical is skipped):
+- Extracts soil water metrics from APSIM results
+- Joins benchmark statistics (weekly mode) for comparison
+- **Files**: `code/02-processing.R`
+- **Output**: `data/outputs/soil-water-status-YYYY-WW.csv`
+
+### Phase 3: Report Generation
+**Weekly/Forecast only** (Historical is skipped):
+- Renders professional Quarto HTML report with maps, plots, benchmark tables
+- **Files**: `code/03-generate-report.R`, `reports/weekly-report-template.qmd`
+- **Output**: `data/outputs/weekly-report-YYYY-WW.html`
+
+### Phase 4: Orchestration
+**All modes**: Routes through appropriate phases based on mode
+- **Files**: `code/04-orchestrate.R`
+- **Logic**: 
+  - HISTORICAL: Phase 1 only → prompt Phase 5
+  - WEEKLY/FORECAST: Phases 1 → 2 → 3 → done
+
+### Phase 5: Benchmark Generation (Historical Only)
+**Historical mode only** (run after all yearly simulations):
+- Aggregates 40-year results into single benchmark file
+- Calculates per-cell statistics: means, SD, percentiles (P10, P25, P75, P90)
+- Computes decadal averages (1985-1994, 1995-2004, etc.)
+- **Files**: `code/05-generate-historical-benchmark.R`
+- **Input**: `data/processed/historical/simulation-results-YYYY.rds` (all years)
+- **Output**: `data/outputs/benchmark/historical-statistics.rds`
 
 ## Key Configuration
 
 File: `code/00-config.R`
 
+### Mode Selection
+
 ```r
-# Simulation window (weekly)
-DATE_START <- "2025-06-16"
-DATE_END   <- "2025-06-22"
+# Choose simulation mode
+SIMULATION_MODE <- "weekly"   # "weekly" | "historical" | "forecast"
 
-# Parallel processing
-CHUNK_SIZE <- 50            # cells per parallel task
+# Weekly mode: current week
+DATE_START <- "2026-01-05"
+DATE_END   <- "2026-01-11"
+
+# Historical mode: 1985-2025 baseline (one-time setup)
+HISTORICAL_START <- "1985-01-01"
+HISTORICAL_END   <- "2025-12-31"
+HISTORICAL_AGGREGATION <- "yearly"  # Process by year
+
+# Forecast mode: next 7 days (optional research stations)
+FORECAST_START <- "2026-01-12"
+FORECAST_END   <- "2026-01-18"
+FORECAST_DATA_SOURCE <- NULL  # Path to forecast .met files
+```
+
+### Parallel Processing
+
+```r
+CHUNK_SIZE <- 50            # cells per parallel task (50 = moderate)
+N_CORES <- NA               # NA = auto-detect; set to fixed number to override
 FORCE_RERUN_SIM <- FALSE    # TRUE = delete checkpoints, re-run all
+```
 
-# Test mode
+### Benchmarking (Weekly Mode Only)
+
+```r
+USE_BENCHMARK <- TRUE                      # Enable 40-year comparisons
+BENCHMARK_FILE <- "data/outputs/benchmark/historical-statistics.rds"
+INCLUDE_BENCHMARK_TABLES <- (SIMULATION_MODE == "weekly" && USE_BENCHMARK)
+```
+
+### Test Mode
+
+```r
 TEST_RUN <- FALSE           # TRUE = run only 20 cells for quick test
 TEST_N_CELLS <- 20
 ```
@@ -91,35 +167,54 @@ For Phase 1 testing, you need:
 - Sample weather files exist at: `/home/user/soybean-ar-climate-change/data/raw/weather_sample/`
 - Can use subset of ~10-20 cells for testing
 
-## Development Checklist
+## Testing the Three-Mode Architecture
 
-### Phase 1 Testing
-- [ ] Copy sample weather files to `data/raw/weather/`
-- [ ] Copy corresponding soil files to `data/raw/soil/`
-- [ ] Copy/create sim-grid.rds with test cells
+### Setup (All Modes)
+- [ ] Copy production data: weather, soil, sim-grid files
 - [ ] Copy APSIM template to `templates/baseline.apsimx`
-- [ ] Set `TEST_RUN <- TRUE` in 00-config.R
-- [ ] Run: `source("code/01-simulation.R")`
-- [ ] Verify: Checkpoints created in `data/outputs/checkpoints/`
-- [ ] Verify: Results in `data/processed/simulation-results.rds`
+- [ ] Edit `code/00-config.R` with current dates
 
-### Phase 2 Testing
-- [ ] Run: `source("code/02-processing.R")`
-- [ ] Verify: `data/outputs/soil-water-status-*.csv` created
-- [ ] Check CSV has columns: cellid, date, swhc_6in, swhc_12in, swhc_24in
+### Test 1: Weekly Mode (Current Week Report)
+- [ ] Set `SIMULATION_MODE <- "weekly"`
+- [ ] Set `DATE_START` and `DATE_END` to current week
+- [ ] Set `USE_BENCHMARK <- TRUE` (if 40-year baseline ready)
+- [ ] Run: `source("code/04-orchestrate.R")`
+- [ ] Verify: `data/processed/weekly/simulation-results.rds`
+- [ ] Verify: `data/outputs/soil-water-status-YYYY-WW.csv`
+- [ ] Verify: `data/outputs/weekly-report-YYYY-WW.html` with benchmark tables
+- [ ] Open HTML in browser and check:
+  - Spatial maps (6in, 12in, 24in depths)
+  - Depth comparison chart
+  - Benchmark comparison section (if baseline available)
 
-### Phase 3 Testing
-- [ ] Create report template: `reports/weekly-report-template.qmd`
-- [ ] Run: `source("code/03-generate-report.R")`
-- [ ] Verify: `data/outputs/weekly-report-*.html` created
-- [ ] Open in browser and check rendering
+### Test 2: Historical Mode (40-Year Baseline Generation)
+- [ ] **First time only**: Set `SIMULATION_MODE <- "historical"`
+- [ ] Set `HISTORICAL_START` and `HISTORICAL_END` to 1985-2025
+- [ ] Run Phase 1: `source("code/01-simulation.R")`
+- [ ] Verify yearly results in: `data/processed/historical/simulation-results-*.rds`
+- [ ] After all years complete, run Phase 5:
+  ```r
+  source("code/05-generate-historical-benchmark.R")
+  ```
+- [ ] Verify benchmark file: `data/outputs/benchmark/historical-statistics.rds`
+- [ ] Check benchmark contains 40-year stats per cell
 
-### Phase 4 Testing
-- [ ] Create `code/00-master.R` orchestrator
-- [ ] Run: `source("code/00-master.R")`
-- [ ] Verify all phases run in sequence
+### Test 3: Forecast Mode (Research Station Predictions)
+- [ ] Set `SIMULATION_MODE <- "forecast"`
+- [ ] Set `FORECAST_START` and `FORECAST_END` to next week
+- [ ] Prepare forecast weather files in `data/raw/forecast/`
+- [ ] Set `PATH_WEATHER <- "data/raw/forecast"` (or use FORECAST_DATA_SOURCE)
+- [ ] Run: `source("code/04-orchestrate.R")`
+- [ ] Verify: `data/processed/forecast/simulation-results.rds`
+- [ ] Verify: `data/outputs/soil-water-status-YYYY-WW.csv`
+- [ ] Verify: `data/outputs/forecast-report-YYYY-WW.html` for 7-day outlook
+
+### Full Automated Pipeline
+- [ ] Verify orchestrator works: `source("code/04-orchestrate.R")`
+- [ ] Check Phase routing (all modes should skip/run appropriate phases)
+- [ ] Schedule via GitHub Actions for weekly runs
 - [ ] Build Quarto website: `quarto render`
-- [ ] Verify: `_site/` contains website
+- [ ] Verify: `_site/` contains website with all reports
 
 ## Environment Detection
 
@@ -152,54 +247,117 @@ The code auto-detects:
 
 ## Architecture Notes
 
+### Three-Mode Design
+
+The system now supports three distinct operational modes without code duplication:
+
+**Mode Routing in Phase 1 (code/01-simulation.R):**
+- Detects `SIMULATION_MODE` from config
+- For **historical**: Wraps chunk processing in year-loop (1985-2025)
+  - Saves yearly checkpoints: `chunk_YYYY_CCC.rds`
+  - Outputs yearly results: `simulation-results-YYYY.rds`
+- For **weekly/forecast**: Single date range processing
+  - Standard per-chunk checkpoints: `chunk_CCC.rds`
+  - Single output file: `simulation-results.rds`
+
+**Mode Routing in Phases 2-3:**
+- Phase 2 detects historical mode → exits early (no processing needed)
+- Phase 3 detects historical mode → exits early (no reporting needed)
+- Phases 2-3 run normally for weekly/forecast modes
+
+**Benchmark Integration (Weekly Only):**
+- Phase 2 optionally loads 40-year benchmark statistics
+- Joins benchmark columns to CSV output
+- Report template conditionally renders comparison tables
+
 ### Adapted from soybean-ar-climate-change
 
-This project reuses key patterns from soybean-ar-climate-change:
-1. **Environment auto-detection** — Same Windows/Linux/cloud detection
-2. **Parallel chunking** — Same PSOCK cluster architecture
+This project reuses key patterns:
+1. **Environment auto-detection** — Windows/Linux/cloud detection
+2. **Parallel chunking** — PSOCK cluster architecture
 3. **Checkpointing** — Per-chunk RDS files for resumability
-4. **APSIM editing** — Same apsimx parameter modification approach
-5. **Progress logging** — Same sim-run-log.csv pattern
+4. **APSIM editing** — apsimx parameter modification approach
+5. **Mode-aware configuration** — Dynamic date range selection
 
-### Simplified for Weekly Use
+### Enhanced for Three-Mode Operation
 
-Compared to soybean-ar-climate-change:
-- **No scenarios loop** — Just baseline (no climate change scenarios)
-- **No chunking across scenarios** — Single scenario, chunk only grid cells
-- **Weekly dates** — DATE_START/END for current week only
-- **Faster turnaround** — Minutes instead of hours
-- **Focus on soil water** — Extract only swhc_* and water balance columns
+New features beyond soybean-ar-climate-change:
+- **No scenarios loop** — Baseline only (no climate perturbations)
+- **Multi-mode routing** — Historical baseline, weekly reports, forecast
+- **Yearly aggregation** — Historical mode processes year-by-year
+- **Benchmark generation** — Phase 5 creates 40-year statistics
+- **Benchmark comparison** — Weekly reports show current vs. historical
+- **Dynamic directories** — Mode-specific checkpoints and output paths
 
-## Next Steps
+## Implementation Guide
 
-1. **Prepare test data:**
-   ```bash
-   cp /home/user/soybean-ar-climate-change/data/raw/weather_sample/* \
-      ar-weekly-weather-soil-reports/data/raw/weather/
-   # Copy corresponding soil files
-   # Create sim-grid.rds with matching cells
-   ```
+### First Time Setup: Generate 40-Year Baseline
 
-2. **Set TEST_RUN mode:**
-   ```r
-   # In code/00-config.R:
-   TEST_RUN <- TRUE
-   TEST_N_CELLS <- 10  # Start small
-   ```
+```r
+# 1. Prepare historical weather and soil data (1985-2025)
+# 2. Edit code/00-config.R:
+SIMULATION_MODE <- "historical"
+HISTORICAL_START <- "1985-01-01"
+HISTORICAL_END <- "2025-12-31"
+TEST_RUN <- FALSE  # Use full grid for accurate baseline
 
-3. **Test Phase 1:**
-   ```r
-   source("code/01-simulation.R")
-   ```
+# 3. Run Phase 1 (generates yearly results)
+source("code/01-simulation.R")
+# Output: data/processed/historical/simulation-results-1985.rds ... simulation-results-2025.rds
 
-4. **Verify output:**
-   ```r
-   # Check if results exist
-   list.files("data/outputs/checkpoints/")
-   readRDS("data/processed/simulation-results.rds") %>% head()
-   ```
+# 4. Generate 40-year benchmark statistics
+source("code/05-generate-historical-benchmark.R")
+# Output: data/outputs/benchmark/historical-statistics.rds
+```
 
-5. **Proceed to Phase 2** once Phase 1 passes all checks
+### Weekly Automated Reports
+
+```r
+# 1. Prepare current week weather data
+# 2. Edit code/00-config.R:
+SIMULATION_MODE <- "weekly"
+DATE_START <- "2026-01-05"  # Current week start
+DATE_END <- "2026-01-11"    # Current week end
+USE_BENCHMARK <- TRUE       # Use 40-year baseline
+
+# 3. Run full pipeline
+source("code/04-orchestrate.R")
+# Outputs:
+#   - data/processed/weekly/simulation-results.rds
+#   - data/outputs/soil-water-status-2026-W01.csv
+#   - data/outputs/weekly-report-2026-W01.html (with benchmark tables)
+```
+
+### Research Station Forecasts (Optional)
+
+```r
+# 1. Prepare 7-day forecast weather data
+# 2. Edit code/00-config.R:
+SIMULATION_MODE <- "forecast"
+FORECAST_START <- "2026-01-12"
+FORECAST_END <- "2026-01-18"
+PATH_WEATHER <- "data/raw/forecast"  # Forecast .met files
+
+# 3. Run pipeline for next week prediction
+source("code/04-orchestrate.R")
+# Outputs:
+#   - data/outputs/soil-water-status-2026-W02.csv
+#   - data/outputs/forecast-report-2026-W02.html
+```
+
+### Schedule Automated Weekly Runs
+
+Setup GitHub Actions workflow in `.github/workflows/weekly-report.yml`:
+- Trigger: Weekly schedule (Mondays at 00:00 UTC)
+- Environment: Cloud runner with production data
+- Steps:
+  1. Load weather data for current week
+  2. Set `SIMULATION_MODE <- "weekly"`
+  3. Run `source("code/04-orchestrate.R")`
+  4. Build website: `quarto render`
+  5. Deploy to GitHub Pages
+
+See: `schedule/github-actions-workflow.yml` for example template
 
 ## Contact
 
