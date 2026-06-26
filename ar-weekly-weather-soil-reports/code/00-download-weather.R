@@ -54,23 +54,99 @@ check_weather_exists <- function(weather_path) {
   )
 }
 
+## ── Helper: Query IEM for latest available date ──────────────────────────
+
+query_iem_latest_date <- function(lonlat) {
+  #' Query IEM to find latest available data date
+  #' Uses apsimx if available, else returns TODAY (safe estimate)
+  #' Returns: list with $latest_date, $lag_days, $method, $error
+
+  tryCatch({
+    # Try using apsimx to query IEM
+    if (requireNamespace("apsimx", quietly = TRUE)) {
+      message(sprintf("[IEM] Querying latest available data via apsimx..."))
+
+      # Try different apsimx functions to get latest data
+      result <- tryCatch({
+        # First try: use check_iem_status if available
+        iem_data <- tryCatch({
+          apsimx::check_iem_status(lonlat = lonlat)
+        }, error = function(e) NULL)
+
+        if (!is.null(iem_data)) {
+          # Extract latest date from status
+          list(
+            latest_date = as.Date(iem_data$date),
+            method = "apsimx_status",
+            error = NULL
+          )
+        } else {
+          # Fallback: query last 30 days and find latest
+          iem_data <- apsimx::get_iem(
+            lonlat = lonlat,
+            dates = c(Sys.Date() - 30, Sys.Date())
+          )
+
+          if (!is.null(iem_data) && nrow(iem_data) > 0) {
+            latest_date_in_data <- max(iem_data$date, na.rm = TRUE)
+            list(
+              latest_date = latest_date_in_data,
+              method = "apsimx_get_iem",
+              error = NULL
+            )
+          } else {
+            list(
+              latest_date = Sys.Date() - 1,
+              method = "apsimx_fallback",
+              error = "No data returned"
+            )
+          }
+        }
+      }, error = function(e) {
+        list(
+          latest_date = Sys.Date() - 1,
+          method = "error_fallback",
+          error = e$message
+        )
+      })
+
+      return(result)
+    } else {
+      # apsimx not available - use safe estimate (yesterday)
+      message(sprintf("[IEM] apsimx not available, using default estimate"))
+      list(
+        latest_date = Sys.Date() - 1,
+        method = "default_estimate",
+        error = "apsimx not installed"
+      )
+    }
+  }, error = function(e) {
+    message(sprintf("[IEM] Error querying: %s", e$message))
+    list(
+      latest_date = Sys.Date() - 1,
+      method = "error_estimate",
+      error = e$message
+    )
+  })
+}
+
 ## ── Helper: Detect data lag ──────────────────────────────────────────────
 
-detect_data_lag <- function(date_end) {
-  #' Estimate IEM data lag based on current date
+detect_data_lag <- function(latest_available_date) {
+  #' Calculate IEM data lag from actual latest available date
   #' Returns: list with $lag_days, $status, $message
 
   today <- Sys.Date()
-  date_end_d <- as.Date(date_end)
-  days_back <- as.integer(difftime(today, date_end_d, units = "days"))
+  latest_d <- as.Date(latest_available_date)
+  days_lag <- as.integer(difftime(today, latest_d, units = "days"))
 
-  if (days_back <= 1) {
+  if (days_lag <= 1) {
     status <- "CURRENT"
     message_text <- "Data is current (≤ 1 day old)"
-  } else if (days_back <= 3) {
+  } else if (days_lag <= 3) {
     status <- "ACCEPTABLE"
     message_text <- "Data lag is acceptable (1-3 days)"
-  } else if (days_back <= 7) {
+  } else if (days_lag <= 7) {
     status <- "STALE"
     message_text <- "Data lag is significant (3-7 days)"
   } else {
@@ -79,10 +155,11 @@ detect_data_lag <- function(date_end) {
   }
 
   list(
-    lag_days = days_back,
+    latest_date = latest_d,
+    lag_days = days_lag,
     status = status,
     message = message_text,
-    recommendation = if(days_back > 2) {
+    recommendation = if(days_lag > 2) {
       "Will use forward-fill + climatology for gaps"
     } else {
       "No gap-fill needed"
@@ -110,12 +187,27 @@ if (VERBOSE) {
   }
 }
 
-# Detect data lag
-lag_info <- detect_data_lag(DATE_END)
+# Query IEM for latest available date
+if (VERBOSE) {
+  message(sprintf("\n[IEM QUERY] Detecting actual data lag from IEM..."))
+}
+
+iem_query <- query_iem_latest_date(c(-92.5, 34.5))
+
+if (VERBOSE) {
+  message(sprintf("  Method: %s", iem_query$method))
+  message(sprintf("  Latest available: %s", iem_query$latest_date))
+  if (!is.null(iem_query$error)) {
+    message(sprintf("  Note: %s", iem_query$error))
+  }
+}
+
+# Detect data lag based on actual latest available date
+lag_info <- detect_data_lag(iem_query$latest_date)
 
 if (VERBOSE) {
   message(sprintf("\n[DATA LAG ANALYSIS]"))
-  message(sprintf("  Simulation end date: %s", DATE_END))
+  message(sprintf("  Latest data from IEM: %s", lag_info$latest_date))
   message(sprintf("  Days behind today: %d", lag_info$lag_days))
   message(sprintf("  Status: %s", lag_info$status))
   message(sprintf("  Message: %s", lag_info$message))
@@ -142,17 +234,28 @@ log_entry <- data.frame(
   run_time = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
   date_start = DATE_START,
   date_end = DATE_END,
+  iem_latest_date = format(lag_info$latest_date, "%Y-%m-%d"),
   weather_status = lag_info$status,
   lag_days = lag_info$lag_days,
   data_source = "IEM",
+  query_method = iem_query$method,
   weather_files_found = weather_check$count,
   weather_file_status = weather_check$status,
   phase_0_completed = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
 )
 
-# Append to log
+# Append to log (with column matching for new fields)
 if (file.exists(log_file)) {
   existing_log <- read.csv(log_file, stringsAsFactors = FALSE)
+
+  # Add missing columns to existing_log if this is first time with new schema
+  for (col in names(log_entry)) {
+    if (!col %in% names(existing_log)) {
+      existing_log[[col]] <- NA
+    }
+  }
+
+  # Ensure column order matches
   log_data <- rbind(existing_log, log_entry)
 } else {
   log_data <- log_entry
