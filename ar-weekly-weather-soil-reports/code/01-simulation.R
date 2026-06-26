@@ -197,6 +197,12 @@ if (TEST_RUN) {
   CHUNK_SIZE <- max(1L, ceiling(nrow(sim.grid1) / 2L))
 }
 
+## ── Apply forecast station filter (forecast mode only) ──────────────────
+if (SIMULATION_MODE == "forecast" && length(FORECAST_STATION_CELLS) > 0) {
+  sim.grid1 <- sim.grid1[sim.grid1$cellid %in% FORECAST_STATION_CELLS, ]
+  cat(sprintf("[FORECAST] Research stations: %d cells selected\n", nrow(sim.grid1)))
+}
+
 message(sprintf("[CONFIG] Cells to simulate: %d", nrow(sim.grid1)))
 message(sprintf("[CONFIG] Chunks: %d (size %d each)",
                 ceiling(nrow(sim.grid1) / CHUNK_SIZE), CHUNK_SIZE))

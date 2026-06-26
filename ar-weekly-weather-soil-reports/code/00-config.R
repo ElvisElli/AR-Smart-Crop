@@ -15,10 +15,11 @@
 
 SIMULATION_MODE <- "weekly"   # "weekly" | "historical" | "forecast"
 
-# Weekly mode: Current week only (for automated scheduling)
-# Use this for: Weekly reports, benchmarking against history
-DATE_START <- "2026-01-05"   # Week start (Monday) — UPDATE FOR CURRENT WEEK
-DATE_END   <- "2026-01-11"   # Week end (Sunday)
+# Weekly mode: Season-to-date (Jan-1 through present)
+# Use this for: Weekly reports simulating full crop season to date
+# Note: Weather data must be available for entire date range
+DATE_START <- "2026-01-01"   # Season start (always Jan-1)
+DATE_END   <- "2026-06-26"   # Present day — UPDATE TO TODAY'S DATE WEEKLY
 
 # Historical mode: 1985-2025 baseline (run once)
 # Use this for: Generate 40-year benchmark statistics
@@ -26,10 +27,11 @@ HISTORICAL_START <- "1985-01-01"
 HISTORICAL_END   <- "2025-12-31"
 HISTORICAL_AGGREGATION <- "yearly"  # "yearly" | "decadal" | "full-period"
 
-# Forecast mode: Next 7 days with weather forecast
-# Use this for: Predict conditions at research stations
-FORECAST_START <- "2026-01-12"   # Next week start
-FORECAST_END   <- "2026-01-18"   # Next week end
+# Forecast mode: Next 7 days with weather forecast (research stations only)
+# Use this for: Predict conditions at research stations (concurrent with weekly)
+# Note: Runs on subset of cells (see FORECAST_CELLS below)
+FORECAST_START <- "2026-01-01"   # Season start (same as weekly for consistency)
+FORECAST_END   <- "2026-07-03"   # Present + 7 days forecast
 FORECAST_DATA_SOURCE <- NULL     # Path to forecast .met files (if different)
 
 ## ─────────────────────────────────────────────────────────────────────────
@@ -63,6 +65,16 @@ TEST_RUN <- FALSE           # TRUE = test mode (small dataset)
 
 TEST_N_CELLS <- 5           # Number of cells to test
 TEST_N_GRID_CELLS <- 20     # If full grid, use first N cells
+
+## ─────────────────────────────────────────────────────────────────────────
+## 4a. FORECAST MODE: RESEARCH STATION SUBSET
+## ─────────────────────────────────────────────────────────────────────────
+## For forecast mode: run on research stations only (concurrent with weekly)
+
+FORECAST_STATION_CELLS <- c()   # Vector of cell IDs for research stations
+                                 # Example: c(1, 50, 100, 200)
+                                 # Leave empty to use all cells
+FORECAST_RUN_CONCURRENT <- TRUE  # Run forecast alongside weekly (separate cluster)
 
 ## ─────────────────────────────────────────────────────────────────────────
 ## 4b. NOTIFICATION & LOGGING (moved earlier to avoid forward reference)
@@ -209,6 +221,12 @@ if (VERBOSE) {
   cat(sprintf("Test mode         : %s\n", if(TEST_RUN) sprintf("TRUE (%d cells)", TEST_N_CELLS) else "FALSE"))
   if (SIMULATION_MODE == "weekly") {
     cat(sprintf("Benchmarking      : %s\n", if(USE_BENCHMARK) "YES (vs. 40-year baseline)" else "NO"))
+    cat(sprintf("Season to date    : Jan-1 through %s\n", DATE_END))
+  }
+  if (SIMULATION_MODE == "forecast") {
+    n_stations <- length(FORECAST_STATION_CELLS)
+    cat(sprintf("Forecast stations : %s\n", if(n_stations > 0) sprintf("%d cells", n_stations) else "all cells"))
+    cat(sprintf("Concurrent run    : %s\n", if(FORECAST_RUN_CONCURRENT) "YES (with weekly mode)" else "NO"))
   }
   cat(sprintf("Cultivar          : %s | Sowing: %s\n", CULTIVAR, SOW_DATE))
   cat(sprintf("Template          : %s\n", APSIM_TEMPLATE))
