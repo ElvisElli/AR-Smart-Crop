@@ -2,11 +2,14 @@
 # Phase 3: Report Generation — Quarto HTML Weekly Report
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# This script generates a professional HTML report from Phase 2 CSV output.
-# Uses Quarto to render weekly soil water status summary with maps and plots.
+# Generates professional HTML report from Phase 2 CSV output.
+# Supports three modes:
+#   - WEEKLY: Full report with benchmark comparisons
+#   - HISTORICAL: Skipped (no weekly reports needed)
+#   - FORECAST: Full report with forecast conditions
 #
 # Input:  data/outputs/soil-water-status-YYYY-WW.csv (Phase 2 output)
-# Output: data/outputs/weekly-report-YYYY-WW.html
+# Output: data/outputs/weekly-report-YYYY-WW.html (weekly/forecast only)
 #
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -20,7 +23,15 @@ suppressPackageStartupMessages({
 
 source("code/00-config.R", local = TRUE)
 
-message(sprintf("\n[%s] Phase 3: Report Generation started\n", .ts()))
+## ── Mode check: Historical mode skips reporting ───────────────────────────
+if (SIMULATION_MODE == "historical") {
+  message(sprintf("[%s] Historical mode detected: Phase 3 skipped\n", .ts()))
+  message("[INFO] No weekly reports generated during historical baseline generation\n")
+  quit(save = "no")
+}
+
+message(sprintf("[%s] Phase 3: Report Generation started (%s mode)\n",
+                .ts(), toupper(SIMULATION_MODE)))
 
 ## ── Find Phase 2 CSV output ────────────────────────────────────────────────
 
