@@ -25,23 +25,31 @@ SIMULATION_MODE <- "weekly"  # "weekly" | "historical" | "forecast"
 
 ### Mode 1: WEEKLY (Default)
 Simulates entire crop season to date (Jan-1 to present), compares to 40-year baseline.
+Automatically downloads and checks weather data each week.
 
 ```r
-# Every week: Edit code/00-config.R and update:
+# Every week: Just run the orchestrator!
 SIMULATION_MODE <- "weekly"
-DATE_START <- "2026-01-01"  # Season start (always Jan-1)
-DATE_END   <- "2026-06-26"  # Update to TODAY's date weekly
-USE_BENCHMARK <- TRUE       # Enable benchmark comparisons
-
-# Prepare: Download weather data from Jan-1 through present day
-# Then run full pipeline:
 source("code/04-orchestrate.R")
+
+# What happens automatically:
+# 1. Phase 0: Downloads latest weather from IEM
+#    - Checks data lag (days behind current date)
+#    - Recommends DATE_END based on latest available data
+#    - Fills gaps if data is stale (2-7 days old)
+#    - Alerts if data is critically stale (>7 days)
+#
+# 2. Phase 1: Simulates Jan-1 to latest available date
+# 3. Phase 2: Aggregates to weekly metrics, joins benchmark data
+# 4. Phase 3: Generates HTML report with benchmark comparisons
 
 # Outputs:
 #   - data/processed/weekly/simulation-results.rds (full season)
 #   - data/outputs/soil-water-status-2026-W26.csv (season-to-date metrics)
 #   - data/outputs/weekly-report-2026-W26.html (with benchmark comparisons)
 ```
+
+**Automated workflow:** Phase 0 handles weather data management. Just update DATE_END if Phase 0 recommends a different date than current day (indicates lag).
 
 **Why season-to-date?** Soil water dynamics depend on entire season history. Weekly reports show how cumulative weather and crop development have affected soil conditions, not just one week's changes.
 
@@ -81,6 +89,18 @@ source("code/04-orchestrate.R")
 **Concurrent execution:** Can run in parallel with weekly mode on separate cluster workers.
 
 ## Pipeline Phases (All Modes)
+
+### Phase 0: Weather Download & Lag Detection (Weekly/Forecast Only)
+**Weekly/Forecast modes**: Checks IEM for latest data, downloads updates, handles stale data
+- **Lag Detection**: Determines how many days behind current date the data is
+- **Lag Responses**:
+  - CURRENT (≤2 days): Download and use data normally
+  - STALE (2-7 days): Download, fill-forward recent gaps, warn user
+  - CRITICAL (>7 days): Alert user, optionally use climatology/forecast
+- **Automatic Config Update**: Recommends DATE_END based on latest available data
+- **Files**: `code/00-download-weather.R`, `code/utils-weather.R`
+- **Output**: Updated weather files in `data/raw/weather/`, recommendations in console
+- **Note**: Runs automatically before Phase 1 in orchestrator
 
 ### Phase 1: APSIM Grid Simulation
 **All modes**: Runs APSIM across grid cells in parallel
@@ -336,23 +356,33 @@ source("code/05-generate-historical-benchmark.R")
 # Output: data/outputs/benchmark/historical-statistics.rds
 ```
 
-### Weekly Automated Reports
+### Weekly Automated Reports (Fully Automatic)
 
 ```r
-# 1. Prepare current week weather data
-# 2. Edit code/00-config.R:
+# SIMPLE: Just run once per week!
 SIMULATION_MODE <- "weekly"
-DATE_START <- "2026-01-05"  # Current week start
-DATE_END <- "2026-01-11"    # Current week end
-USE_BENCHMARK <- TRUE       # Use 40-year baseline
+USE_BENCHMARK <- TRUE  # Requires 40-year baseline (from historical mode)
 
-# 3. Run full pipeline
 source("code/04-orchestrate.R")
+
+# Automated:
+# Phase 0: Downloads latest weather from IEM, checks lag
+# Phase 1: Simulates Jan-1 through latest available date
+# Phase 2: Aggregates, joins benchmark data
+# Phase 3: Generates report with benchmark comparisons
+
 # Outputs:
-#   - data/processed/weekly/simulation-results.rds
-#   - data/outputs/soil-water-status-2026-W01.csv
-#   - data/outputs/weekly-report-2026-W01.html (with benchmark tables)
+#   - data/processed/weekly/simulation-results.rds (season-to-date)
+#   - data/outputs/soil-water-status-2026-W26.csv
+#   - data/outputs/weekly-report-2026-W26.html (with benchmark tables)
 ```
+
+**Data lag handling (automatic):**
+- Phase 0 checks IEM weather data lag
+- ≤2 days: Fresh data, proceed normally
+- 2-7 days: Fill gaps intelligently, warn user
+- >7 days: Alert user, can use climatology
+- Console shows recommended DATE_END
 
 ### Research Station Forecasts (Optional)
 
